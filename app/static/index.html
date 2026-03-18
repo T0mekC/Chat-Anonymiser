@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PII Anonymiser</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    /* ── Tokens ────────────────────────────────────────────── */
+    :root {
+      --red:       #E4002B;
+      --red-hover: #B8001F;
+      --amber-bg:  #FFF3CD;
+      --amber-fg:  #856404;
+      --amber-border: #FFDA6A;
+      --green-bg:  #D4EDDA;
+      --green-fg:  #155724;
+      --green-border: #A8D5B5;
+      --neutral:   #F8F9FA;
+      --border:    #DEE2E6;
+      --text:      #212529;
+      --muted:     #6C757D;
+      --white:     #FFFFFF;
+      --shadow:    0 2px 8px rgba(0,0,0,.10);
+      --radius:    6px;
+    }
+
+    /* ── Base ───────────────────────────────────────────────── */
+    html { font-size: 62.5%; }
+    body {
+      font-family: FujitsuInfinityPro, Arial, sans-serif;
+      font-size: 1.5rem;
+      line-height: 1.7;
+      color: var(--text);
+      background: var(--neutral);
+      min-height: 100vh;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────── */
+    .app-header {
+      background: var(--white);
+      border-bottom: 3px solid var(--red);
+      padding: 0 3.2rem;
+      height: 6rem;
+      display: flex;
+      align-items: center;
+      gap: 1.2rem;
+    }
+    .app-header__logo {
+      width: 3.2rem;
+      height: 3.2rem;
+      background: var(--red);
+      border-radius: 50%;
+    }
+    .app-header__title {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -.02em;
+    }
+    .app-header__step {
+      margin-left: auto;
+      font-size: 1.3rem;
+      color: var(--muted);
+    }
+
+    .container {
+      max-width: 120rem;
+      margin: 0 auto;
+      padding: 3.2rem 3.2rem 6rem;
+    }
+
+    /* ── Cards ──────────────────────────────────────────────── */
+    .card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 2.8rem 3.2rem;
+      margin-bottom: 2.4rem;
+    }
+    .card__title {
+      font-size: 1.7rem;
+      font-weight: 700;
+      margin-bottom: 1.6rem;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .6rem;
+      padding: .9rem 2.2rem;
+      border-radius: var(--radius);
+      font-size: 1.5rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s, opacity .15s;
+    }
+    .btn-primary {
+      background: var(--red);
+      color: var(--white);
+      border: none;
+    }
+    .btn-primary:hover { background: var(--red-hover); }
+    .btn-primary:disabled { opacity: .5; cursor: default; }
+    .btn-outline {
+      background: transparent;
+      color: var(--red);
+      border: 2px solid var(--red);
+    }
+    .btn-outline:hover { background: #FFF0F2; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      font-weight: 400;
+      font-size: 1.3rem;
+      padding: .4rem 1rem;
+    }
+    .btn-ghost:hover { background: var(--neutral); }
+
+    /* ── Textarea ───────────────────────────────────────────── */
+    .textarea {
+      width: 100%;
+      min-height: 22rem;
+      padding: 1.4rem 1.6rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1.5rem;
+      line-height: 1.7;
+      color: var(--text);
+      background: var(--white);
+      resize: vertical;
+    }
+    .textarea:focus { outline: 2px solid var(--red); border-color: transparent; }
+    .textarea--readonly { background: var(--neutral); color: var(--muted); }
+
+    /* ── Side-by-side ───────────────────────────────────────── */
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 2.4rem; }
+    .split__label {
+      font-size: 1.2rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin-bottom: .6rem;
+    }
+
+    /* Anonymised text panel — rich render */
+    .anon-panel {
+      position: relative;
+      min-height: 22rem;
+      padding: 1.4rem 1.6rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--white);
+      font-size: 1.5rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      cursor: text;
+      user-select: text;
+    }
+    .anon-panel mark.pii {
+      background: var(--amber-bg);
+      color: var(--amber-fg);
+      border: 1px solid var(--amber-border);
+      border-radius: 3px;
+      padding: 0 .3rem;
+      font-weight: 700;
+    }
+
+    /* ── Entity table ───────────────────────────────────────── */
+    .entity-table {
+      width: 100%;
+      font-size: 1.4rem;
+      border-collapse: collapse;
+    }
+    .entity-table th {
+      text-align: left;
+      font-size: 1.2rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      padding: .8rem 1.2rem;
+      border-bottom: 2px solid var(--border);
+    }
+    .entity-table td {
+      padding: .8rem 1.2rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .entity-table tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block;
+      padding: .1rem .7rem;
+      border-radius: 3px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      background: var(--amber-bg);
+      color: var(--amber-fg);
+      border: 1px solid var(--amber-border);
+    }
+
+    /* ── Response ───────────────────────────────────────────── */
+    .response-body {
+      font-size: 1.5rem;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .response-body mark.restored {
+      background: var(--green-bg);
+      color: var(--green-fg);
+      border: 1px solid var(--green-border);
+      border-radius: 3px;
+      padding: 0 .3rem;
+      position: relative;
+      cursor: default;
+    }
+    .response-body mark.restored:hover::after {
+      content: attr(data-placeholder);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: #fff;
+      padding: .3rem .8rem;
+      border-radius: 4px;
+      font-size: 1.2rem;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* ── Floating selection button ──────────────────────────── */
+    #selection-btn {
+      position: fixed;
+      display: none;
+      z-index: 200;
+      background: var(--red);
+      color: var(--white);
+      border: none;
+      border-radius: var(--radius);
+      padding: .6rem 1.4rem;
+      font-size: 1.3rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,.25);
+    }
+    #selection-btn:hover { background: var(--red-hover); }
+
+    /* ── Modal ──────────────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 300;
+    }
+    .modal-backdrop.hidden { display: none; }
+    .modal {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 32px rgba(0,0,0,.2);
+      padding: 2.8rem 3.2rem;
+      width: 44rem;
+      max-width: 95vw;
+    }
+    .modal__title { font-size: 1.7rem; font-weight: 700; margin-bottom: 1.6rem; }
+    .modal__label { font-size: 1.3rem; color: var(--muted); margin-bottom: .4rem; display: block; }
+    .modal__input {
+      width: 100%;
+      padding: .9rem 1.2rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .modal__input:focus { outline: 2px solid var(--red); border-color: transparent; }
+    .modal__actions { display: flex; gap: 1.2rem; justify-content: flex-end; }
+
+    /* ── Alerts ─────────────────────────────────────────────── */
+    .alert {
+      padding: 1.2rem 1.6rem;
+      border-radius: var(--radius);
+      font-size: 1.4rem;
+      margin-bottom: 2rem;
+    }
+    .alert-info { background: #CCE5FF; color: #004085; border: 1px solid #B8DAFF; }
+    .alert-error { background: #F8D7DA; color: #721C24; border: 1px solid #F5C6CB; }
+
+    /* ── Spinner ────────────────────────────────────────────── */
+    .spinner-overlay {
+      position: fixed; inset: 0;
+      background: rgba(255,255,255,.75);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 400;
+    }
+    .spinner-overlay.hidden { display: none; }
+    .spinner {
+      width: 4.8rem; height: 4.8rem;
+      border: 4px solid var(--border);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-label { margin-top: 1.6rem; font-size: 1.4rem; color: var(--muted); }
+
+    /* ── Utility ────────────────────────────────────────────── */
+    .hidden { display: none !important; }
+    .mt-2 { margin-top: 2rem; }
+    .actions { display: flex; gap: 1.2rem; align-items: center; margin-top: 2.4rem; }
+    .section-title {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 2rem;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────── -->
+<header class="app-header">
+  <div class="app-header__logo"></div>
+  <span class="app-header__title">PII Anonymiser</span>
+  <span class="app-header__step" id="step-indicator"></span>
+</header>
+
+<!-- ── Spinner overlay ─────────────────────────────────────────────── -->
+<div class="spinner-overlay hidden" id="spinner">
+  <div class="spinner"></div>
+  <div class="spinner-label" id="spinner-label">Analysing for PII…</div>
+</div>
+
+<!-- ── Floating selection button ───────────────────────────────────── -->
+<button id="selection-btn">+ Add anonymisation</button>
+
+<!-- ── Modal ───────────────────────────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal__title" id="modal-title">Add anonymisation</div>
+    <div id="modal-selected-text" style="font-size:1.3rem;color:var(--muted);margin-bottom:1.6rem;"></div>
+    <label class="modal__label" for="modal-placeholder-input">Replacement placeholder (free-form)</label>
+    <input class="modal__input" id="modal-placeholder-input" type="text" placeholder="e.g. [CUSTOMER_NAME]" />
+    <div class="modal__actions">
+      <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Main content ─────────────────────────────────────────────────── -->
+<main class="container">
+
+  <!-- VIEW 1: Input -->
+  <div id="view-input">
+    <div class="section-title">Enter your prompt</div>
+    <div class="card">
+      <div class="card__title">Raw prompt</div>
+      <div id="input-error" class="alert alert-error hidden"></div>
+      <textarea
+        id="raw-input"
+        class="textarea"
+        placeholder="Paste your prompt here. Any names, emails, addresses, or other sensitive information will be detected and anonymised before being sent to the external model."
+        spellcheck="false"
+      ></textarea>
+      <div class="actions">
+        <button class="btn btn-primary" id="btn-anonymise">Anonymise →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 2: Review -->
+  <div id="view-review" class="hidden">
+    <div class="section-title">Review anonymisation</div>
+
+    <div id="review-error" class="alert alert-error hidden"></div>
+    <div id="no-pii-banner" class="alert alert-info hidden">
+      No PII detected in your text. You may still highlight and add anonymisations manually below.
+    </div>
+
+    <div class="card">
+      <div class="split">
+        <div>
+          <div class="split__label">Original</div>
+          <textarea id="original-display" class="textarea textarea--readonly" readonly></textarea>
+        </div>
+        <div>
+          <div class="split__label">Anonymised &nbsp;<span style="font-size:1.2rem;color:var(--muted);font-weight:400;">(select text to add anonymisation)</span></div>
+          <div id="anon-panel" class="anon-panel"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__title">Detected entities</div>
+      <table class="entity-table" id="entity-table">
+        <thead>
+          <tr>
+            <th>Placeholder</th>
+            <th>Original value</th>
+            <th style="width:6rem;"></th>
+          </tr>
+        </thead>
+        <tbody id="entity-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-complete">Prompt external model →</button>
+      <button class="btn btn-outline" id="btn-back-input">← Back</button>
+    </div>
+  </div>
+
+  <!-- VIEW 3: Response -->
+  <div id="view-response" class="hidden">
+    <div class="section-title">Response</div>
+
+    <div class="card">
+      <div class="card__title">De-anonymised response</div>
+      <div id="response-error" class="alert alert-error hidden"></div>
+      <div id="response-body" class="response-body"></div>
+    </div>
+
+    <div class="card">
+      <div class="card__title">PII used in this session</div>
+      <table class="entity-table" id="response-entity-table">
+        <thead>
+          <tr>
+            <th>Placeholder</th>
+            <th>Original value</th>
+          </tr>
+        </thead>
+        <tbody id="response-entity-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-start-over">Start over</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const state = {
+  sessionId: null,
+  rawText: '',
+  anonymisedText: '',
+  entities: [],           // [{placeholder, original}]
+  pendingSelection: null, // {text, start, end} of current mouse selection
+};
+
+// ── DOM helpers ────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function showView(name) {
+  ['view-input', 'view-review', 'view-response'].forEach(v => {
+    $(v).classList.toggle('hidden', v !== 'view-' + name);
+  });
+  const labels = { input: 'Step 1 of 3 — Enter prompt', review: 'Step 2 of 3 — Review anonymisation', response: 'Step 3 of 3 — Response' };
+  $('step-indicator').textContent = labels[name] || '';
+}
+
+function showSpinner(label = 'Processing…') {
+  $('spinner-label').textContent = label;
+  $('spinner').classList.remove('hidden');
+}
+function hideSpinner() { $('spinner').classList.add('hidden'); }
+
+function showError(id, msg) {
+  const el = $(id);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+function clearError(id) { $(id).classList.add('hidden'); }
+
+// ── API helpers ────────────────────────────────────────────────────────────
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+// ── Render anonymised panel ────────────────────────────────────────────────
+/**
+ * Render anonymised text into #anon-panel, wrapping placeholders in <mark>.
+ * Placeholders are identified from state.entities.
+ */
+function renderAnonPanel(text) {
+  if (!text) { $('anon-panel').innerHTML = ''; return; }
+
+  const placeholders = state.entities.map(e => e.placeholder);
+  if (!placeholders.length) {
+    $('anon-panel').textContent = text;
+    return;
+  }
+
+  // Sort longest first to avoid partial matches
+  const sorted = [...placeholders].sort((a, b) => b.length - a.length);
+  const escaped = sorted.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp(`(${escaped.join('|')})`, 'g');
+
+  const parts = text.split(re);
+  const html = parts.map(part => {
+    if (placeholders.includes(part)) {
+      return `<mark class="pii">${escHtml(part)}</mark>`;
+    }
+    return escHtml(part);
+  }).join('');
+
+  $('anon-panel').innerHTML = html;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Render entity table ────────────────────────────────────────────────────
+function renderEntityTable() {
+  const tbody = $('entity-tbody');
+  tbody.innerHTML = '';
+
+  if (!state.entities.length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);padding:1.2rem;">No entities.</td></tr>';
+    return;
+  }
+
+  state.entities.forEach(({ placeholder, original }) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="badge">${escHtml(placeholder)}</span></td>
+      <td>${escHtml(original)}</td>
+      <td><button class="btn btn-ghost" data-ph="${escHtml(placeholder)}">Remove</button></td>
+    `;
+    tr.querySelector('button').addEventListener('click', () => removeEntity(placeholder));
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Render response ────────────────────────────────────────────────────────
+function renderResponse(text, ranges) {
+  if (!ranges || !ranges.length) {
+    $('response-body').textContent = text;
+    return;
+  }
+
+  let html = '';
+  let cursor = 0;
+  ranges.forEach(({ start, end, placeholder, original }) => {
+    html += escHtml(text.slice(cursor, start));
+    html += `<mark class="restored" data-placeholder="${escHtml(placeholder)}">${escHtml(original)}</mark>`;
+    cursor = end;
+  });
+  html += escHtml(text.slice(cursor));
+  $('response-body').innerHTML = html;
+}
+
+function renderResponseEntityTable(entities) {
+  const tbody = $('response-entity-tbody');
+  tbody.innerHTML = '';
+  if (!entities.length) {
+    tbody.innerHTML = '<tr><td colspan="2" style="color:var(--muted);">No entities.</td></tr>';
+    return;
+  }
+  entities.forEach(({ placeholder, original }) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="badge">${escHtml(placeholder)}</span></td>
+      <td>${escHtml(original)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Step 1: Anonymise ──────────────────────────────────────────────────────
+$('btn-anonymise').addEventListener('click', async () => {
+  clearError('input-error');
+  const text = $('raw-input').value.trim();
+  if (!text) { showError('input-error', 'Please enter some text first.'); return; }
+
+  showSpinner('Analysing for PII…');
+  try {
+    const session = await api('/api/session', {});
+    state.sessionId = session.session_id;
+    state.rawText = text;
+
+    const result = await api('/api/anonymise', { session_id: state.sessionId, text });
+    state.anonymisedText = result.anonymised_text;
+    state.entities = result.entities;
+
+    $('original-display').value = state.rawText;
+    renderAnonPanel(state.anonymisedText);
+    renderEntityTable();
+
+    const noPii = $('no-pii-banner');
+    if (!state.entities.length) noPii.classList.remove('hidden');
+    else noPii.classList.add('hidden');
+
+    showView('review');
+  } catch (err) {
+    showError('input-error', err.message);
+  } finally {
+    hideSpinner();
+  }
+});
+
+// ── Step 2: Remove entity ──────────────────────────────────────────────────
+async function removeEntity(placeholder) {
+  clearError('review-error');
+  showSpinner('Updating…');
+  try {
+    const result = await api('/api/anonymise/update', {
+      session_id: state.sessionId,
+      action: 'remove',
+      placeholder,
+      text: state.anonymisedText,
+    });
+    state.anonymisedText = result.anonymised_text;
+    state.entities = result.entities;
+    renderAnonPanel(state.anonymisedText);
+    renderEntityTable();
+
+    const noPii = $('no-pii-banner');
+    if (!state.entities.length) noPii.classList.remove('hidden');
+    else noPii.classList.add('hidden');
+  } catch (err) {
+    showError('review-error', err.message);
+  } finally {
+    hideSpinner();
+  }
+}
+
+// ── Step 2: Text selection → floating button ───────────────────────────────
+const anonPanel = $('anon-panel');
+const selectionBtn = $('selection-btn');
+
+document.addEventListener('mouseup', (e) => {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) {
+    selectionBtn.style.display = 'none';
+    state.pendingSelection = null;
+    return;
+  }
+
+  // Only activate when selection is within the anon panel
+  const range = sel.getRangeAt(0);
+  if (!anonPanel.contains(range.commonAncestorContainer)) {
+    selectionBtn.style.display = 'none';
+    state.pendingSelection = null;
+    return;
+  }
+
+  const selectedText = sel.toString().trim();
+  if (!selectedText) { selectionBtn.style.display = 'none'; return; }
+
+  state.pendingSelection = { text: selectedText };
+
+  // Position near the selection
+  const rect = range.getBoundingClientRect();
+  selectionBtn.style.display = 'block';
+  selectionBtn.style.top = `${window.scrollY + rect.bottom + 8}px`;
+  selectionBtn.style.left = `${window.scrollX + rect.left}px`;
+});
+
+selectionBtn.addEventListener('mousedown', (e) => {
+  e.preventDefault(); // keep selection alive
+});
+
+selectionBtn.addEventListener('click', () => {
+  if (!state.pendingSelection) return;
+  selectionBtn.style.display = 'none';
+  openModal(state.pendingSelection.text);
+});
+
+// ── Modal ──────────────────────────────────────────────────────────────────
+function openModal(selectedText) {
+  $('modal-selected-text').textContent = `Selected: "${selectedText}"`;
+  $('modal-placeholder-input').value = '[CUSTOM]';
+  $('modal-backdrop').classList.remove('hidden');
+  $('modal-placeholder-input').select();
+  $('modal-placeholder-input').focus();
+  // Keep ref
+  $('modal-backdrop').dataset.selected = selectedText;
+}
+
+$('modal-cancel').addEventListener('click', () => {
+  $('modal-backdrop').classList.add('hidden');
+  window.getSelection()?.removeAllRanges();
+});
+
+$('modal-backdrop').addEventListener('click', (e) => {
+  if (e.target === $('modal-backdrop')) {
+    $('modal-backdrop').classList.add('hidden');
+    window.getSelection()?.removeAllRanges();
+  }
+});
+
+$('modal-confirm').addEventListener('click', confirmAddAnon);
+$('modal-placeholder-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') confirmAddAnon();
+  if (e.key === 'Escape') $('modal-cancel').click();
+});
+
+async function confirmAddAnon() {
+  const placeholder = $('modal-placeholder-input').value.trim();
+  const original = $('modal-backdrop').dataset.selected;
+
+  if (!placeholder) {
+    $('modal-placeholder-input').focus();
+    return;
+  }
+
+  $('modal-backdrop').classList.add('hidden');
+  window.getSelection()?.removeAllRanges();
+  clearError('review-error');
+  showSpinner('Updating…');
+
+  try {
+    const result = await api('/api/anonymise/update', {
+      session_id: state.sessionId,
+      action: 'add',
+      original,
+      placeholder,
+      text: state.anonymisedText,
+    });
+    state.anonymisedText = result.anonymised_text;
+    state.entities = result.entities;
+    renderAnonPanel(state.anonymisedText);
+    renderEntityTable();
+
+    const noPii = $('no-pii-banner');
+    if (!state.entities.length) noPii.classList.remove('hidden');
+    else noPii.classList.add('hidden');
+  } catch (err) {
+    showError('review-error', err.message);
+  } finally {
+    hideSpinner();
+  }
+}
+
+// ── Step 3: Complete ───────────────────────────────────────────────────────
+$('btn-complete').addEventListener('click', async () => {
+  clearError('review-error');
+  showSpinner('Sending to Claude Haiku…');
+  try {
+    const result = await api('/api/complete', {
+      session_id: state.sessionId,
+      anonymised_text: state.anonymisedText,
+    });
+    renderResponse(result.response_text, result.highlighted_ranges);
+    renderResponseEntityTable(result.entities);
+    showView('response');
+  } catch (err) {
+    showError('review-error', err.message);
+  } finally {
+    hideSpinner();
+  }
+});
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+$('btn-back-input').addEventListener('click', () => showView('input'));
+
+$('btn-start-over').addEventListener('click', () => {
+  Object.assign(state, { sessionId: null, rawText: '', anonymisedText: '', entities: [], pendingSelection: null });
+  $('raw-input').value = '';
+  clearError('input-error');
+  clearError('review-error');
+  clearError('response-error');
+  showView('input');
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+showView('input');
+</script>
+</body>
+</html>
