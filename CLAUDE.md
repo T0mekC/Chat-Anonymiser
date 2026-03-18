@@ -21,7 +21,8 @@ User input ──► phi3:mini (Ollama, local) ──► entity detection
                               highlighted de-anonymised response ──► user
 ```
 
-**PII entity types detected:** NAME · EMAIL · ADDRESS · COMPANY · PHONE · SSN · WBS_CODE · OTHER_PII
+**PII entity types detected:** NAME · EMAIL · ADDRESS · COMPANY · PHONE · URL · SSN · WBS_CODE · OTHER_PII
+**Excluded from detection:** dates, times, timestamps, generic job titles, standalone country/city names
 
 ---
 
@@ -92,17 +93,36 @@ The backend also returns character ranges of restored values for frontend highli
 
 ---
 
-## phi3:mini integration (anonymiser.py)
+## phi3:3.8b integration (anonymiser.py)
 
 - Calls Ollama at `http://localhost:11434/api/generate`
+- Model: `phi3:3.8b` (pulled as `phi3:3.8b` — verify with `ollama list`)
 - Uses `format: "json"` to force structured output
-- Prompt instructs the model to return a JSON array of detected entities:
+- Prompt returns a JSON array of detected entities:
   ```json
-  [{"value": "Jane Doe", "type": "NAME"}, {"value": "jane@acme.com", "type": "EMAIL"}]
+  [{"value": "Anna Kowalski", "type": "NAME"}, {"value": "anna.k@gmail.com", "type": "EMAIL"}]
   ```
 - The backend (not the model) performs the actual text replacement.
-- If Ollama is unreachable, return "please ensure Ollama is running on your device. Run terminal command: " .
-- Model: `phi3:mini` (assumed already pulled — `ollama pull phi3:mini`)
+- If Ollama is unreachable, raise HTTP 503: "please ensure Ollama is running on your device. Run terminal command: ollama serve"
+- All `httpx.HTTPError` subclasses (connect error, timeout, HTTP status error) are caught and returned as 503.
+
+### Entity types
+| Type | Detects |
+|------|---------|
+| NAME | Full names, first/last names, nicknames, usernames |
+| EMAIL | Email addresses |
+| PHONE | Phone numbers in any format |
+| ADDRESS | Street addresses, postcodes, building+city combinations |
+| COMPANY | Company names, brand names, organisation names |
+| URL | Web addresses, domain names |
+| SSN | Social security / national ID numbers (PESEL, NIP, etc.) |
+| WBS_CODE | Project / work-breakdown-structure codes |
+| OTHER_PII | Any other sensitive identifier |
+
+### Explicitly excluded from detection
+- Dates, times, timestamps (e.g. "12 March 2025", "14:30", "Q1 2024")
+- Generic job titles without a name attached (e.g. "the manager", "CEO")
+- Standalone country or city names used generically (e.g. "London", "Poland")
 
 ---
 

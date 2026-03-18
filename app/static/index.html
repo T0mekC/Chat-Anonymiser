@@ -487,7 +487,10 @@ async function api(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
+  const ct = res.headers.get('content-type') || '';
+  const data = ct.includes('application/json')
+    ? await res.json()
+    : { detail: await res.text() };
   if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
   return data;
 }
@@ -503,23 +506,27 @@ function renderAnonPanel(text) {
   const placeholders = state.entities.map(e => e.placeholder);
   if (!placeholders.length) {
     $('anon-panel').textContent = text;
-    return;
+  } else {
+    // Sort longest first to avoid partial matches
+    const sorted = [...placeholders].sort((a, b) => b.length - a.length);
+    const escaped = sorted.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const re = new RegExp(`(${escaped.join('|')})`, 'g');
+
+    const parts = text.split(re);
+    const html = parts.map(part => {
+      if (placeholders.includes(part)) {
+        return `<mark class="pii">${escHtml(part)}</mark>`;
+      }
+      return escHtml(part);
+    }).join('');
+
+    $('anon-panel').innerHTML = html;
   }
 
-  // Sort longest first to avoid partial matches
-  const sorted = [...placeholders].sort((a, b) => b.length - a.length);
-  const escaped = sorted.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const re = new RegExp(`(${escaped.join('|')})`, 'g');
-
-  const parts = text.split(re);
-  const html = parts.map(part => {
-    if (placeholders.includes(part)) {
-      return `<mark class="pii">${escHtml(part)}</mark>`;
-    }
-    return escHtml(part);
-  }).join('');
-
-  $('anon-panel').innerHTML = html;
+  // Match original textarea height to the rendered anon panel
+  requestAnimationFrame(() => {
+    $('original-display').style.height = $('anon-panel').offsetHeight + 'px';
+  });
 }
 
 function escHtml(s) {
@@ -669,8 +676,11 @@ document.addEventListener('mouseup', (e) => {
   // Position near the selection
   const rect = range.getBoundingClientRect();
   selectionBtn.style.display = 'block';
-  selectionBtn.style.top = `${window.scrollY + rect.bottom + 8}px`;
-  selectionBtn.style.left = `${window.scrollX + rect.left}px`;
+  // position: fixed uses viewport coords — do NOT add scroll offset
+  const btnTop = rect.bottom + 8;
+  const btnLeft = Math.min(rect.left, window.innerWidth - 180); // keep within viewport
+  selectionBtn.style.top = `${btnTop}px`;
+  selectionBtn.style.left = `${btnLeft}px`;
 });
 
 selectionBtn.addEventListener('mousedown', (e) => {

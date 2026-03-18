@@ -12,15 +12,35 @@ OLLAMA_TIMEOUT = 120.0  # phi3:mini can be slow on first run
 
 SYSTEM_PROMPT = (
     "You are a PII detection assistant. "
-    "When given a text, identify all personally identifiable information and sensitive proper nouns. "
-    "Return ONLY a valid JSON array. Each element must have two fields: "
-    '"value" (the exact string as it appears in the text) and '
-    '"type" (one of: NAME, EMAIL, ADDRESS, COMPANY, PHONE, SSN, WBS_CODE, OTHER_PII). '
-    "If no PII is found, return an empty array []. "
-    "Do not include any explanation or text outside the JSON array."
+    "Your only job is to find sensitive or identifying information in text and list it as a JSON array. "
+    "Each item has two fields: \"value\" (exact substring from the text) and \"type\" (see categories). "
+    "Categories: NAME, EMAIL, PHONE, ADDRESS, COMPANY, URL, SSN, WBS_CODE, OTHER_PII. "
+    "Never flag dates, times, or timestamps. "
+    "Output only the JSON array and nothing else."
 )
 
-USER_PROMPT_TEMPLATE = "Detect all PII in the following text:\n\n{text}"
+USER_PROMPT_TEMPLATE = """Find all proper nouns, personal data and sensitive identifiers in the TEXT below.
+
+Include:
+- Personal names, nicknames (NAME)
+- Email addresses (EMAIL)
+- Phone numbers in any format (PHONE)
+- Street addresses, postcodes (ADDRESS)
+- Company / organisation / brand names (COMPANY)
+- URLs and domain names (URL)
+- ID numbers: SSN, PESEL, NIP, passport, bank account (SSN)
+- Project / WBS codes (WBS_CODE)
+- Any other sensitive identifier (OTHER_PII)
+
+Do NOT include: dates, times, standalone country or city names, generic job titles.
+
+Example input: "Hi, I'm Sarah Connor. Call me at +1-800-555-0199 or sarah@sky.net. I work at Cyberdyne Systems, 18144 El Camino Real."
+Example output: [{{"value":"Sarah Connor","type":"NAME"}},{{"value":"+1-800-555-0199","type":"PHONE"}},{{"value":"sarah@sky.net","type":"EMAIL"}},{{"value":"Cyberdyne Systems","type":"COMPANY"}},{{"value":"18144 El Camino Real","type":"ADDRESS"}}]
+
+TEXT:
+{text}
+
+JSON output:"""
 
 
 def _extract_json_array(raw: str) -> list[dict]:
@@ -58,7 +78,6 @@ async def detect_entities(text: str) -> list[dict]:
         "model": OLLAMA_MODEL,
         "prompt": USER_PROMPT_TEMPLATE.format(text=text),
         "system": SYSTEM_PROMPT,
-        "format": "json",
         "stream": False,
         "options": {"temperature": 0},
     }
@@ -75,7 +94,7 @@ async def detect_entities(text: str) -> list[dict]:
     entities = _extract_json_array(raw_output)
 
     # Validate and normalise: keep only entries with non-empty value and known/unknown type
-    valid_types = {"NAME", "EMAIL", "ADDRESS", "COMPANY", "PHONE", "SSN", "WBS_CODE", "OTHER_PII"}
+    valid_types = {"NAME", "EMAIL", "ADDRESS", "COMPANY", "PHONE", "URL", "SSN", "WBS_CODE", "OTHER_PII"}
     cleaned = []
     seen_values = set()
     for item in entities:

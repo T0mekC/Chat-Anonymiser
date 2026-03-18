@@ -2,8 +2,8 @@ import uuid
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -12,6 +12,12 @@ import anonymiser as anon
 import claude_client
 
 app = FastAPI(title="PII Anonymiser")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Ensure all unhandled exceptions return JSON rather than plain-text 500."""
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 STATIC_DIR = Path(__file__).parent / "static"
 ROOT_DIR = Path(__file__).parent.parent
@@ -79,7 +85,7 @@ async def anonymise(req: AnonymiseRequest):
 
     try:
         entities = await anon.detect_entities(req.text)
-    except httpx.ConnectError:
+    except httpx.HTTPError:
         raise HTTPException(
             status_code=503,
             detail=(

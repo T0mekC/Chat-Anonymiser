@@ -14,5 +14,5 @@ if not ANTHROPIC_API_KEY:
     )
 
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL: str = "phi3:mini"
+OLLAMA_MODEL: str = "phi3:3.8b"
 CLAUDE_MODEL: str = "claude-haiku-4-5"
