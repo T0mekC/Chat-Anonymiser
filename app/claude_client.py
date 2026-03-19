@@ -8,7 +8,7 @@ from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant. "
-    "The user's message may contain tokens wrapped in <fake>...</fake> tags. "
+    "The user's message may contain tokens wrapped in <fake>...</fake> or <custom>...</custom> tags. "
     "These are anonymisation placeholders that stand in for real names, organisations, and other entities. "
     "You MUST copy these tokens into your response exactly as they appear — never modify, translate, paraphrase, or omit them. "
     "Respond helpfully to the request as written."

@@ -96,16 +96,17 @@ def get_or_create_fake(session_id: str, original: str, entity_type: str) -> str:
         return fake
 
 
-def add_custom_fake(session_id: str, original: str, fake: str) -> None:
-    """Add a user-defined mapping entry (free-form fake value)."""
+def add_custom_fake(session_id: str, original: str, fake: str) -> str:
+    """Add a user-defined mapping entry. Returns the wrapped fake value."""
     session = get_session(session_id)
     if session is None:
         raise KeyError(f"Session {session_id} not found")
-    # Wrap in structured delimiter if not already wrapped
-    quoted = fake if (fake.startswith("<fake>") and fake.endswith("</fake>")) else f"<fake>{fake}</fake>"
+    # Wrap in custom delimiter if not already wrapped
+    quoted = fake if (fake.startswith("<custom>") and fake.endswith("</custom>")) else f"<custom>{fake}</custom>"
     with _lock:
         session["mapping"][quoted] = original
         session["fakes"].add(quoted)
+    return quoted
 
 
 def remove_fake(session_id: str, fake: str) -> Optional[str]:

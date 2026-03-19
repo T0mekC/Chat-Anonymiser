@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prompt Anonymiser</title>
   <link rel="stylesheet" href="/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/kitsune.svg" />
   <style>
     /* ── Tokens ────────────────────────────────────────────── */
     :root {
@@ -16,6 +17,9 @@
       --green-bg:  #D4EDDA;
       --green-fg:  #155724;
       --green-border: #A8D5B5;
+      --teal-bg:   #D1ECF1;
+      --teal-fg:   #0C5460;
+      --teal-border: #87CEDB;
       --neutral:   #F8F9FA;
       --border:    #DEE2E6;
       --text:      #212529;
@@ -199,6 +203,14 @@
       padding: 0 .3rem;
       font-weight: 700;
     }
+    .anon-panel mark.custom {
+      background: var(--teal-bg);
+      color: var(--teal-fg);
+      border: 1px solid var(--teal-border);
+      border-radius: 3px;
+      padding: 0 .3rem;
+      font-weight: 700;
+    }
 
     /* ── Entity table ───────────────────────────────────────── */
     .entity-table {
@@ -231,6 +243,11 @@
       color: var(--amber-fg);
       border: 1px solid var(--amber-border);
     }
+    .badge-custom {
+      background: var(--teal-bg);
+      color: var(--teal-fg);
+      border-color: var(--teal-border);
+    }
 
     /* ── Response ───────────────────────────────────────────── */
     .response-body {
@@ -239,16 +256,28 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
-    .response-body mark.restored {
-      background: var(--green-bg);
-      color: var(--green-fg);
-      border: 1px solid var(--green-border);
+    .response-body mark.pii,
+    .response-body mark.custom {
       border-radius: 3px;
       padding: 0 .3rem;
+      border-width: 1px;
+      border-style: solid;
+      font-weight: 700;
       position: relative;
       cursor: default;
     }
-    .response-body mark.restored:hover::after {
+    .response-body mark.pii {
+      background: var(--amber-bg);
+      color: var(--amber-fg);
+      border-color: var(--amber-border);
+    }
+    .response-body mark.custom {
+      background: var(--teal-bg);
+      color: var(--teal-fg);
+      border-color: var(--teal-border);
+    }
+    .response-body mark.pii:hover::after,
+    .response-body mark.custom:hover::after {
       content: "Sent as: " attr(data-fake);
       position: absolute;
       bottom: calc(100% + 6px);
@@ -563,7 +592,8 @@ function renderAnonPanel(text) {
     const parts = text.split(re);
     const html = parts.map(part => {
       if (fakes.includes(part)) {
-        return `<mark class="pii">${escHtml(part)}</mark>`;
+        const cls = part.startsWith('<custom>') ? 'custom' : 'pii';
+        return `<mark class="${cls}">${escHtml(part)}</mark>`;
       }
       return escHtml(part);
     }).join('');
@@ -593,8 +623,9 @@ function renderEntityTable() {
 
   state.entities.forEach(({ fake, original }) => {
     const tr = document.createElement('tr');
+    const badgeCls = fake.startsWith('<custom>') ? 'badge badge-custom' : 'badge';
     tr.innerHTML = `
-      <td><span class="badge">${escHtml(fake)}</span></td>
+      <td><span class="${badgeCls}">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
       <td><button class="btn btn-ghost" data-ph="${escHtml(fake)}">Remove</button></td>
     `;
@@ -614,7 +645,8 @@ function renderResponse(text, ranges) {
   let cursor = 0;
   ranges.forEach(({ start, end, fake, original }) => {
     html += escHtml(text.slice(cursor, start));
-    html += `<mark class="restored" data-fake="${escHtml(fake)}">${escHtml(original)}</mark>`;
+    const cls = fake.startsWith('<custom>') ? 'custom' : 'pii';
+    html += `<mark class="${cls}" data-fake="${escHtml(fake)}">${escHtml(original)}</mark>`;
     cursor = end;
   });
   html += escHtml(text.slice(cursor));
@@ -630,8 +662,9 @@ function renderResponseEntityTable(entities) {
   }
   entities.forEach(({ fake, original }) => {
     const tr = document.createElement('tr');
+    const badgeCls = fake.startsWith('<custom>') ? 'badge badge-custom' : 'badge';
     tr.innerHTML = `
-      <td><span class="badge">${escHtml(fake)}</span></td>
+      <td><span class="${badgeCls}">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
     `;
     tbody.appendChild(tr);

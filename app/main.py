@@ -117,9 +117,9 @@ async def anonymise_update(req: UpdateRequest):
     if req.action == "add":
         if not req.original or not req.fake:
             raise HTTPException(status_code=422, detail="'original' and 'fake' required for add")
-        session_store.add_custom_fake(req.session_id, req.original, req.fake)
-        # Apply only the new entry to the current text (original → fake)
-        updated_text = req.text.replace(req.original, req.fake)
+        wrapped_fake = session_store.add_custom_fake(req.session_id, req.original, req.fake)
+        # Apply only the new entry to the current text (original → wrapped fake)
+        updated_text = req.text.replace(req.original, wrapped_fake)
 
     elif req.action == "remove":
         if not req.fake:
