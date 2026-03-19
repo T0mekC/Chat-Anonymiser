@@ -47,6 +47,8 @@ def _generate_unique_fake(session: dict, entity_type: str) -> str:
         candidate = f"{base}-{suffix}"
         suffix += 1
 
+    # Wrap in structured delimiter so the external model treats it as an opaque token
+    candidate = f"<fake>{candidate}</fake>"
     fakes.add(candidate)
     return candidate
 
@@ -99,9 +101,11 @@ def add_custom_fake(session_id: str, original: str, fake: str) -> None:
     session = get_session(session_id)
     if session is None:
         raise KeyError(f"Session {session_id} not found")
+    # Wrap in structured delimiter if not already wrapped
+    quoted = fake if (fake.startswith("<fake>") and fake.endswith("</fake>")) else f"<fake>{fake}</fake>"
     with _lock:
-        session["mapping"][fake] = original
-        session["fakes"].add(fake)
+        session["mapping"][quoted] = original
+        session["fakes"].add(quoted)
 
 
 def remove_fake(session_id: str, fake: str) -> Optional[str]:
