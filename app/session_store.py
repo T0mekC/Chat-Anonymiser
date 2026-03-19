@@ -2,18 +2,60 @@ import time
 import threading
 from typing import Optional
 
+from faker import Faker
+
 SESSION_TTL = 2 * 60 * 60  # 2 hours in seconds
 
-# Each session: { "mapping": {"[NAME_1]": "Jane Doe", ...}, "counters": {"NAME": 1, ...}, "created_at": float }
+# Each session: { "mapping": {"Jane Doe": "Anna Kowalski", ...}, "fakes": set(), "created_at": float }
 _store: dict[str, dict] = {}
 _lock = threading.Lock()
+
+_faker = Faker()
+
+_FAKER_GENERATORS = {
+    "NAME":      lambda: _faker.name().replace(" ", ""),
+    "EMAIL":     lambda: _faker.email(),
+    "PHONE":     lambda: _faker.phone_number(),
+    "ADDRESS":   lambda: _faker.address().replace("\n", ", "),
+    "COMPANY":   lambda: _faker.company().replace(" ", ""),
+    "URL":       lambda: _faker.url(),
+    "SSN":       lambda: _faker.ssn(),
+    "OTHER_PII": lambda: _faker.uuid4(),
+}
+
+
+def _generate_unique_fake(session: dict, entity_type: str) -> str:
+    """Generate a Faker value that is unique within this session."""
+    fakes = session["fakes"]
+    generator = _FAKER_GENERATORS.get(entity_type)
+
+    if generator is None:
+        # WBS_CODE: no Faker equivalent
+        base = f"PRJ-{len(fakes) + 1:04d}"
+    else:
+        base = generator()
+
+    candidate = base
+    attempts = 0
+    while candidate in fakes and attempts < 10:
+        candidate = generator() if generator else f"{base}-{attempts + 1}"
+        attempts += 1
+
+    # Last resort: append numeric suffix
+    suffix = 2
+    while candidate in fakes:
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+
+    fakes.add(candidate)
+    return candidate
 
 
 def create_session(session_id: str) -> None:
     with _lock:
         _store[session_id] = {
             "mapping": {},
-            "counters": {},
+            "fakes": set(),
             "created_at": time.time(),
         }
 
@@ -34,49 +76,47 @@ def get_mapping(session_id: str) -> Optional[dict[str, str]]:
     return session["mapping"] if session else None
 
 
-def get_or_create_placeholder(session_id: str, original: str, entity_type: str) -> str:
-    """Return existing placeholder for this value or create a new one."""
+def get_or_create_fake(session_id: str, original: str, entity_type: str) -> str:
+    """Return existing fake for this value or generate a new one."""
     session = get_session(session_id)
     if session is None:
         raise KeyError(f"Session {session_id} not found")
 
     with _lock:
         mapping = session["mapping"]
-        # Return existing placeholder if we've seen this value before
-        for placeholder, value in mapping.items():
+        # Return existing fake if we've seen this value before
+        for fake, value in mapping.items():
             if value == original:
-                return placeholder
+                return fake
 
-        # Allocate the next counter for this type
-        counters = session["counters"]
-        n = counters.get(entity_type, 0) + 1
-        counters[entity_type] = n
-        placeholder = f"[{entity_type}_{n}]"
-        mapping[placeholder] = original
-        return placeholder
+        fake = _generate_unique_fake(session, entity_type)
+        mapping[fake] = original
+        return fake
 
 
-def add_custom_placeholder(session_id: str, original: str, placeholder: str) -> None:
-    """Add a user-defined mapping entry (free-form placeholder)."""
+def add_custom_fake(session_id: str, original: str, fake: str) -> None:
+    """Add a user-defined mapping entry (free-form fake value)."""
     session = get_session(session_id)
     if session is None:
         raise KeyError(f"Session {session_id} not found")
     with _lock:
-        session["mapping"][placeholder] = original
+        session["mapping"][fake] = original
+        session["fakes"].add(fake)
 
 
-def remove_placeholder(session_id: str, placeholder: str) -> Optional[str]:
+def remove_fake(session_id: str, fake: str) -> Optional[str]:
     """Remove a mapping entry; return the original value or None if not found."""
     session = get_session(session_id)
     if session is None:
         raise KeyError(f"Session {session_id} not found")
     with _lock:
-        return session["mapping"].pop(placeholder, None)
+        session["fakes"].discard(fake)
+        return session["mapping"].pop(fake, None)
 
 
 def list_entities(session_id: str) -> list[dict]:
-    """Return sorted list of {placeholder, original} dicts."""
+    """Return list of {fake, original} dicts."""
     mapping = get_mapping(session_id)
     if mapping is None:
         return []
-    return [{"placeholder": k, "original": v} for k, v in mapping.items()]
+    return [{"fake": k, "original": v} for k, v in mapping.items()]

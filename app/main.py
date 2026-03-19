@@ -11,7 +11,7 @@ import session_store
 import anonymiser as anon
 import claude_client
 
-app = FastAPI(title="PII Anonymiser")
+app = FastAPI(title="Prompt Anonymiser")
 
 
 @app.exception_handler(Exception)
@@ -47,13 +47,13 @@ class AnonymiseRequest(BaseModel):
 
 class AnonymiseResponse(BaseModel):
     anonymised_text: str
-    entities: list[dict]  # [{placeholder, original}]
+    entities: list[dict]  # [{fake, original}]
 
 
 class UpdateRequest(BaseModel):
     session_id: str
     action: str          # "add" | "remove"
-    placeholder: str | None = None
+    fake: str | None = None
     original: str | None = None
     text: str            # current anonymised text
 
@@ -65,8 +65,8 @@ class CompleteRequest(BaseModel):
 
 class CompleteResponse(BaseModel):
     response_text: str
-    entities: list[dict]           # [{placeholder, original}]
-    highlighted_ranges: list[dict] # [{start, end, placeholder, original}]
+    entities: list[dict]           # [{fake, original}]
+    highlighted_ranges: list[dict] # [{start, end, fake, original}]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ async def anonymise(req: AnonymiseRequest):
 
     # Register each entity with the session and build replacements
     for entity in entities:
-        session_store.get_or_create_placeholder(
+        session_store.get_or_create_fake(
             req.session_id, entity["value"], entity["type"]
         )
 
@@ -115,21 +115,20 @@ async def anonymise_update(req: UpdateRequest):
         raise HTTPException(status_code=404, detail="Session not found or expired")
 
     if req.action == "add":
-        if not req.original or not req.placeholder:
-            raise HTTPException(status_code=422, detail="'original' and 'placeholder' required for add")
-        session_store.add_custom_placeholder(req.session_id, req.original, req.placeholder)
-        mapping = session_store.get_mapping(req.session_id)
-        # Apply only the new entry to the current text (original → placeholder)
-        updated_text = req.text.replace(req.original, req.placeholder)
+        if not req.original or not req.fake:
+            raise HTTPException(status_code=422, detail="'original' and 'fake' required for add")
+        session_store.add_custom_fake(req.session_id, req.original, req.fake)
+        # Apply only the new entry to the current text (original → fake)
+        updated_text = req.text.replace(req.original, req.fake)
 
     elif req.action == "remove":
-        if not req.placeholder:
-            raise HTTPException(status_code=422, detail="'placeholder' required for remove")
-        original = session_store.remove_placeholder(req.session_id, req.placeholder)
+        if not req.fake:
+            raise HTTPException(status_code=422, detail="'fake' required for remove")
+        original = session_store.remove_fake(req.session_id, req.fake)
         if original is None:
-            raise HTTPException(status_code=404, detail="Placeholder not found in session")
-        # Restore the placeholder back to original value in current text
-        updated_text = req.text.replace(req.placeholder, original)
+            raise HTTPException(status_code=404, detail="Fake value not found in session")
+        # Restore the fake back to original value in current text
+        updated_text = req.text.replace(req.fake, original)
 
     else:
         raise HTTPException(status_code=422, detail=f"Unknown action '{req.action}'")

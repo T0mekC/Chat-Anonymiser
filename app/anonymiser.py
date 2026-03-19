@@ -148,7 +148,7 @@ def restore_replacements(text: str, replacements: dict[str, str]) -> tuple[str, 
             ranges.append({
                 "start": idx,
                 "end": idx + len(original),
-                "placeholder": placeholder,
+                "fake": placeholder,
                 "original": original,
             })
             start = idx + len(original)

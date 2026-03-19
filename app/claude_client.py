@@ -8,10 +8,7 @@ from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant. "
-    "The user's message may contain anonymisation placeholders such as [NAME_1], [EMAIL_1], "
-    "[ADDRESS_1], etc. These tokens are intentional — they replace sensitive information. "
-    "Do not modify, expand, guess, or remove these placeholders. "
-    "Respond helpfully to the request as written."
+    "Respond helpfully to the user's request as written."
 )
 
 

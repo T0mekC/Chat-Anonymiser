@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PII Anonymiser</title>
+  <title>Prompt Anonymiser</title>
   <link rel="stylesheet" href="/style.css" />
   <style>
     /* ── Tokens ────────────────────────────────────────────── */
@@ -41,16 +41,45 @@
       background: var(--white);
       border-bottom: 3px solid var(--red);
       padding: 0 3.2rem;
-      height: 6rem;
+      height: 8rem;
       display: flex;
       align-items: center;
       gap: 1.2rem;
     }
     .app-header__logo {
+      width: 6.4rem;
+      height: 6.4rem;
+    }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    .app-footer {
+      background: var(--white);
+      border-top: 3px solid var(--red);
+      padding: 3.2rem;
+    }
+    .app-footer__inner {
+      max-width: 120rem;
+      margin: 0 auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 2.4rem;
+    }
+    .app-footer__logo {
       width: 3.2rem;
       height: 3.2rem;
-      background: var(--red);
-      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: .4rem;
+    }
+    .app-footer__text { flex: 1; }
+    .app-footer__name {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: .6rem;
+    }
+    .app-footer__desc {
+      font-size: 1.3rem;
+      color: var(--muted);
+      line-height: 1.7;
     }
     .app-header__title {
       font-size: 1.8rem;
@@ -121,6 +150,7 @@
     /* ── Textarea ───────────────────────────────────────────── */
     .textarea {
       width: 100%;
+      box-sizing: border-box;
       min-height: 22rem;
       padding: 1.4rem 1.6rem;
       border: 1px solid var(--border);
@@ -219,7 +249,7 @@
       cursor: default;
     }
     .response-body mark.restored:hover::after {
-      content: attr(data-placeholder);
+      content: "Sent as: " attr(data-fake);
       position: absolute;
       bottom: calc(100% + 6px);
       left: 50%;
@@ -325,8 +355,8 @@
 
 <!-- ── Header ──────────────────────────────────────────────────────── -->
 <header class="app-header">
-  <div class="app-header__logo"></div>
-  <span class="app-header__title">PII Anonymiser</span>
+  <img src="/static/kitsune.svg" class="app-header__logo" alt="Prompt Anonymiser logo" />
+  <span class="app-header__title">Prompt Anonymiser</span>
   <span class="app-header__step" id="step-indicator"></span>
 </header>
 
@@ -344,8 +374,8 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal__title" id="modal-title">Add anonymisation</div>
     <div id="modal-selected-text" style="font-size:1.3rem;color:var(--muted);margin-bottom:1.6rem;"></div>
-    <label class="modal__label" for="modal-placeholder-input">Replacement placeholder (free-form)</label>
-    <input class="modal__input" id="modal-placeholder-input" type="text" placeholder="e.g. [CUSTOMER_NAME]" />
+    <label class="modal__label" for="modal-placeholder-input">Replace with (fake value)</label>
+    <input class="modal__input" id="modal-placeholder-input" type="text" placeholder="e.g. Bob Smith" />
     <div class="modal__actions">
       <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
       <button class="btn btn-primary" id="modal-confirm">Confirm</button>
@@ -401,7 +431,7 @@
       <table class="entity-table" id="entity-table">
         <thead>
           <tr>
-            <th>Placeholder</th>
+            <th>Anonymised as</th>
             <th>Original value</th>
             <th style="width:6rem;"></th>
           </tr>
@@ -431,7 +461,7 @@
       <table class="entity-table" id="response-entity-table">
         <thead>
           <tr>
-            <th>Placeholder</th>
+            <th>Anonymised as</th>
             <th>Original value</th>
           </tr>
         </thead>
@@ -446,13 +476,31 @@
 
 </main>
 
+<!-- ── Footer ──────────────────────────────────────────────────────── -->
+<footer class="app-footer">
+  <div class="app-footer__inner">
+    <img src="/static/kitsune.svg" class="app-footer__logo" alt="" />
+    <div class="app-footer__text">
+      <div class="app-footer__name">Prompt Anonymiser</div>
+      <div class="app-footer__desc">
+        Designed to let you use external AI models without exposing sensitive information.
+        Before your prompt leaves your device, a local model detects personal data — names,
+        emails, phone numbers, addresses, and more — and replaces each with a realistic
+        fake generated on-device. The external model sees only the sanitised text and
+        never has access to the originals. When the response arrives, every fake is
+        swapped back so you read the answer with your real data restored.
+      </div>
+    </div>
+  </div>
+</footer>
+
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
   sessionId: null,
   rawText: '',
   anonymisedText: '',
-  entities: [],           // [{placeholder, original}]
+  entities: [],           // [{fake, original}]
   pendingSelection: null, // {text, start, end} of current mouse selection
 };
 
@@ -503,18 +551,18 @@ async function api(path, body) {
 function renderAnonPanel(text) {
   if (!text) { $('anon-panel').innerHTML = ''; return; }
 
-  const placeholders = state.entities.map(e => e.placeholder);
-  if (!placeholders.length) {
+  const fakes = state.entities.map(e => e.fake);
+  if (!fakes.length) {
     $('anon-panel').textContent = text;
   } else {
     // Sort longest first to avoid partial matches
-    const sorted = [...placeholders].sort((a, b) => b.length - a.length);
+    const sorted = [...fakes].sort((a, b) => b.length - a.length);
     const escaped = sorted.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const re = new RegExp(`(${escaped.join('|')})`, 'g');
 
     const parts = text.split(re);
     const html = parts.map(part => {
-      if (placeholders.includes(part)) {
+      if (fakes.includes(part)) {
         return `<mark class="pii">${escHtml(part)}</mark>`;
       }
       return escHtml(part);
@@ -543,14 +591,14 @@ function renderEntityTable() {
     return;
   }
 
-  state.entities.forEach(({ placeholder, original }) => {
+  state.entities.forEach(({ fake, original }) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="badge">${escHtml(placeholder)}</span></td>
+      <td><span class="badge">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
-      <td><button class="btn btn-ghost" data-ph="${escHtml(placeholder)}">Remove</button></td>
+      <td><button class="btn btn-ghost" data-ph="${escHtml(fake)}">Remove</button></td>
     `;
-    tr.querySelector('button').addEventListener('click', () => removeEntity(placeholder));
+    tr.querySelector('button').addEventListener('click', () => removeEntity(fake));
     tbody.appendChild(tr);
   });
 }
@@ -564,9 +612,9 @@ function renderResponse(text, ranges) {
 
   let html = '';
   let cursor = 0;
-  ranges.forEach(({ start, end, placeholder, original }) => {
+  ranges.forEach(({ start, end, fake, original }) => {
     html += escHtml(text.slice(cursor, start));
-    html += `<mark class="restored" data-placeholder="${escHtml(placeholder)}">${escHtml(original)}</mark>`;
+    html += `<mark class="restored" data-fake="${escHtml(fake)}">${escHtml(original)}</mark>`;
     cursor = end;
   });
   html += escHtml(text.slice(cursor));
@@ -580,10 +628,10 @@ function renderResponseEntityTable(entities) {
     tbody.innerHTML = '<tr><td colspan="2" style="color:var(--muted);">No entities.</td></tr>';
     return;
   }
-  entities.forEach(({ placeholder, original }) => {
+  entities.forEach(({ fake, original }) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="badge">${escHtml(placeholder)}</span></td>
+      <td><span class="badge">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
     `;
     tbody.appendChild(tr);
@@ -623,14 +671,14 @@ $('btn-anonymise').addEventListener('click', async () => {
 });
 
 // ── Step 2: Remove entity ──────────────────────────────────────────────────
-async function removeEntity(placeholder) {
+async function removeEntity(fake) {
   clearError('review-error');
   showSpinner('Updating…');
   try {
     const result = await api('/api/anonymise/update', {
       session_id: state.sessionId,
       action: 'remove',
-      placeholder,
+      fake,
       text: state.anonymisedText,
     });
     state.anonymisedText = result.anonymised_text;
@@ -696,7 +744,7 @@ selectionBtn.addEventListener('click', () => {
 // ── Modal ──────────────────────────────────────────────────────────────────
 function openModal(selectedText) {
   $('modal-selected-text').textContent = `Selected: "${selectedText}"`;
-  $('modal-placeholder-input').value = '[CUSTOM]';
+  $('modal-placeholder-input').value = '';
   $('modal-backdrop').classList.remove('hidden');
   $('modal-placeholder-input').select();
   $('modal-placeholder-input').focus();
@@ -723,10 +771,10 @@ $('modal-placeholder-input').addEventListener('keydown', (e) => {
 });
 
 async function confirmAddAnon() {
-  const placeholder = $('modal-placeholder-input').value.trim();
+  const fake = $('modal-placeholder-input').value.trim();
   const original = $('modal-backdrop').dataset.selected;
 
-  if (!placeholder) {
+  if (!fake) {
     $('modal-placeholder-input').focus();
     return;
   }
@@ -741,7 +789,7 @@ async function confirmAddAnon() {
       session_id: state.sessionId,
       action: 'add',
       original,
-      placeholder,
+      fake,
       text: state.anonymisedText,
     });
     state.anonymisedText = result.anonymised_text;
