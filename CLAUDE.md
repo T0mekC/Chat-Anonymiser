@@ -1,14 +1,43 @@
-# CLAUDE.md — PII Anonymiser
+# CLAUDE.md
 
-Local POC single-page web application. Anonymises user prompts via a local LLM (phi3:mini)
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+Local POC single-page web application. Anonymises user prompts via a local LLM (phi3:3.8b)
 before sending them to Claude Haiku, then de-anonymises the response programmatically.
+
+---
+
+## Commands
+
+```bash
+# Start the app (handles venv, deps, and Ollama check)
+chmod +x start.sh && ./start.sh
+
+# Or start manually from the app/ directory
+source ../.venv/bin/activate
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+
+# Install / update dependencies
+pip install -r app/requirements.txt
+
+# Check Ollama is running and the model is available
+curl http://localhost:11434/api/tags
+ollama list   # should show phi3:3.8b
+
+# Pull the model if missing
+ollama pull phi3:3.8b
+```
+
+There are no tests in this project.
+
+Open: `http://localhost:8000`
 
 ---
 
 ## Project overview
 
 ```
-User input ──► phi3:mini (Ollama, local) ──► entity detection
+User input ──► phi3:3.8b (Ollama, local) ──► entity detection
                                                │
                               backend replaces entities with placeholders
                                                │
@@ -30,13 +59,18 @@ User input ──► phi3:mini (Ollama, local) ──► entity detection
 
 | Layer | Technology | Notes |
 |-------|-----------|-------|
-| Anonymiser LLM | phi3:mini via Ollama | Runs locally on Apple Silicon |
+| Anonymiser LLM | phi3:3.8b via Ollama | Runs locally on Apple Silicon |
 | Backend API | Python 3.11 + FastAPI | Served on localhost:8000 |
 | Frontend | Vanilla HTML/CSS/JS SPA | Single `index.html`, no framework |
 | External LLM | Claude Haiku (`claude-haiku-4-5`) | Anthropic API |
 | API key storage | `.env` file (project root) | Never exposed externally |
 
 **Target hardware:** MacBook Air M2 (MW103ZE/A) — all components run locally.
+
+### Static file serving
+- `/static/*` — served from `app/static/` via FastAPI `StaticFiles` mount
+- `/style.css` — served via a **dedicated route** (`GET /style.css`) from the project root, not through the static mount
+- `/` — serves `app/static/index.html`
 
 ---
 
@@ -45,15 +79,16 @@ User input ──► phi3:mini (Ollama, local) ──► entity detection
 ```
 ├── app/
 │   ├── main.py             FastAPI app: serves static files + API routes
-│   ├── anonymiser.py       phi3:mini via Ollama — entity detection only
+│   ├── anonymiser.py       phi3:3.8b via Ollama — entity detection + text replacement
 │   ├── claude_client.py    Claude Haiku API call
 │   ├── session_store.py    In-memory session store (session_id → mapping)
-│   ├── config.py           Loads ANTHROPIC_API_KEY from .env
+│   ├── config.py           Loads env vars from .env; exports ANTHROPIC_API_KEY, OLLAMA_BASE_URL, OLLAMA_MODEL, CLAUDE_MODEL
 │   ├── requirements.txt
 │   └── static/
 │       └── index.html      Single-page UI (3-view JS state machine)
+├── style.css               Fujitsu destyle CSS reset (served at /style.css)
+├── examplewebpage.png      Fujitsu design reference
 ├── .env                    ANTHROPIC_API_KEY=sk-ant-...  ← git-ignored
-├── .gitignore
 ├── start.sh                Launch script
 └── CLAUDE.md               This file
 ```
@@ -65,7 +100,7 @@ User input ──► phi3:mini (Ollama, local) ──► entity detection
 | Method | Path | Request body | Response |
 |--------|------|-------------|---------|
 | `POST` | `/api/session` | `{}` | `{ session_id }` |
-| `POST` | `/api/anonymise` | `{ session_id, text }` | `{ anonymised_text, entities: [{placeholder, original, type}] }` |
+| `POST` | `/api/anonymise` | `{ session_id, text }` | `{ anonymised_text, entities: [{placeholder, original}] }` |
 | `POST` | `/api/anonymise/update` | `{ session_id, action, placeholder?, original?, text? }` | `{ anonymised_text, entities }` |
 | `POST` | `/api/complete` | `{ session_id, anonymised_text }` | `{ response_text, entities, highlighted_ranges }` |
 
@@ -95,15 +130,15 @@ The backend also returns character ranges of restored values for frontend highli
 
 ## phi3:3.8b integration (anonymiser.py)
 
-- Calls Ollama at `http://localhost:11434/api/generate`
-- Model: `phi3:3.8b` (pulled as `phi3:3.8b` — verify with `ollama list`)
-- Uses `format: "json"` to force structured output
+- Calls Ollama at `http://localhost:11434/api/generate` (overridable via `OLLAMA_BASE_URL` in `.env`)
+- Model: `phi3:3.8b` (verify with `ollama list`)
+- Uses `temperature: 0` and `stream: false` for deterministic JSON output
 - Prompt returns a JSON array of detected entities:
   ```json
   [{"value": "Anna Kowalski", "type": "NAME"}, {"value": "anna.k@gmail.com", "type": "EMAIL"}]
   ```
 - The backend (not the model) performs the actual text replacement.
-- If Ollama is unreachable, raise HTTP 503: "please ensure Ollama is running on your device. Run terminal command: ollama serve"
+- If Ollama is unreachable, raises HTTP 503: "please ensure Ollama is running on your device. Run terminal command: ollama serve"
 - All `httpx.HTTPError` subclasses (connect error, timeout, HTTP status error) are caught and returned as 503.
 
 ### Entity types
@@ -129,9 +164,8 @@ The backend also returns character ranges of restored values for frontend highli
 ## Claude Haiku integration (claude_client.py)
 
 - Model ID: `claude-haiku-4-5`
-- Uses `anthropic` Python SDK
-- System prompt: instruct the model to respond helpfully; placeholders like `[NAME_1]` in the
-  prompt are intentional anonymisation tokens — do not modify or expand them.
+- Uses `anthropic` Python SDK (`AsyncAnthropic`)
+- System prompt instructs the model to treat placeholders like `[NAME_1]` as intentional anonymisation tokens — do not modify or expand them.
 - API key loaded from `.env` via `config.py` — never hardcoded, never logged.
 
 ---
@@ -141,7 +175,7 @@ The backend also returns character ranges of restored values for frontend highli
 Single file. Three views managed by a JS state machine (no page reload, no framework).
 
 ### Design reference
-- **Style base:** `style.css` in project root (Fujitsu destyle CSS reset — link it from index.html)
+- **Style base:** `style.css` in project root (Fujitsu destyle CSS reset — linked as `/style.css`)
 - **Reference image:** `examplewebpage.png` (Fujitsu corporate look: white background, red CTAs, clean typography)
 - **Font stack:** `FujitsuInfinityPro, Arial, sans-serif` (FujitsuInfinityPro will not load locally — Arial fallback is fine)
 - **Colour palette:**
@@ -156,7 +190,7 @@ Single file. Three views managed by a JS state machine (no page reload, no frame
 ### View 1 — Input
 - Full-width `<textarea>` placeholder: "Paste your prompt here…"
 - "Anonymise" button (primary, red) → POST `/api/session` then POST `/api/anonymise`
-- Loading spinner overlay while phi3:mini processes
+- Loading spinner overlay while phi3:3.8b processes
 
 ### View 2 — Review (side-by-side)
 - Left panel: original text (read-only, light grey background)
@@ -185,50 +219,8 @@ Single file. Three views managed by a JS state machine (no page reload, no frame
 ### `.env` (git-ignored)
 ```
 ANTHROPIC_API_KEY=sk-ant-YOUR-KEY-HERE
+OLLAMA_BASE_URL=http://localhost:11434   # optional, this is the default
 ```
-
-### `config.py`
-```python
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-if not ANTHROPIC_API_KEY:
-    raise RuntimeError("ANTHROPIC_API_KEY not set in .env")
-```
-
----
-
-## Prerequisites (already on user's machine)
-- Python 3.11+
-- Ollama installed and running (`ollama serve`)
-- phi3:mini pulled (`ollama pull phi3:mini`)
-- `.env` file created with Anthropic API key
-
----
-
-## Start script (start.sh)
-
-```bash
-#!/usr/bin/env bash
-set -e
-
-# Ensure Ollama is running
-if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-  echo "Starting Ollama..."
-  ollama serve &
-  sleep 2
-fi
-
-cd app
-source ../.venv/bin/activate 2>/dev/null || python3 -m venv ../.venv && source ../.venv/bin/activate
-pip install -q -r requirements.txt
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-Run: `chmod +x start.sh && ./start.sh`
-Open: `http://localhost:8000`
 
 ---
 
@@ -236,7 +228,7 @@ Open: `http://localhost:8000`
 
 - **Single user** — in-memory store, not designed for concurrent sessions.
 - **In-memory only** — refreshing the browser loses the session and mapping.
-- **phi3:mini accuracy** — small model; always review the entity table before sending.
+- **phi3:3.8b accuracy** — small model; always review the entity table before sending.
 - **HTTP only** — runs on localhost, no TLS needed.
 - **Manual edits not back-tracked** — if you type a placeholder directly into the text area that
   isn't in the session mapping, de-anonymisation will leave it unreplaced.
@@ -248,5 +240,5 @@ Open: `http://localhost:8000`
 
 - Do **not** log or persist PII anywhere (no files, no database, no stdout logging of entity values).
 - Do **not** expose the Anthropic API key in any frontend code or API response.
-- Keep all LLM calls to phi3:mini **local only** (Ollama on localhost).
+- Keep all LLM calls to phi3:3.8b **local only** (Ollama on localhost).
 - Session IDs should be random UUIDs (use `uuid.uuid4()`).
