@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Local POC single-page web application. Anonymises user prompts by replacing real PII with
-Faker-generated fake values (e.g. "Anna Kowalski" → "Jane Doe") before sending to Claude Haiku,
+opaque indexed placeholders (e.g. `[NAME_1]`, `[EMAIL_1]`) before sending to Claude Haiku,
 then de-anonymises the response programmatically.
 
 ---
@@ -40,7 +40,7 @@ Open: `http://localhost:8000`
 ```
 User input ──► phi3:3.8b (Ollama, local) ──► entity detection
                                                │
-                     backend replaces entities with Faker-generated fake values
+                     backend replaces entities with opaque [TYPE_N] placeholders
                                                │
                               user reviews & edits anonymised text
                                                │
@@ -191,7 +191,8 @@ Single file. Three views managed by a JS state machine (no page reload, no frame
 - **Font stack:** `FujitsuInfinityPro, Arial, sans-serif` (FujitsuInfinityPro will not load locally — Arial fallback is fine)
 - **Colour palette:**
   - Primary action (buttons): `#E4002B` (Fujitsu red)
-  - Anonymised placeholder highlights: `#FFF3CD` background, `#856404` text (amber)
+  - Auto-detected placeholder highlights: `#FFF3CD` background, `#856404` text (amber)
+  - User-defined (CUSTOM) placeholder highlights: `#D1ECF1` background, `#0C5460` text (teal)
   - De-anonymised value highlights: `#D4EDDA` background, `#155724` text (green)
   - Neutral background: `#F8F9FA`
   - Card background: `#FFFFFF` with subtle `box-shadow`
@@ -205,10 +206,12 @@ Single file. Three views managed by a JS state machine (no page reload, no frame
 
 ### View 2 — Review (side-by-side)
 - Left panel: original text (read-only, light grey background)
-- Right panel: anonymised text — placeholders rendered as amber `<mark>` chips, editable otherwise
+- Right panel: anonymised text — auto-detected placeholders as amber `<mark>` chips, user-defined (CUSTOM) as teal chips
+- "Copy" button in the right panel label row (copies plain text of the anonymised panel)
 - If no entities detected: show a blue info banner "No PII detected. You may still add anonymisations manually."
 - Entity table below both panels:
   | Anonymised as | Original value | Remove |
+  - Badge colour: amber for auto-detected, teal for CUSTOM
   - "Remove" button calls `/api/anonymise/update` with action `remove`
 - Text-selection interaction on the right panel:
   - On `mouseup`, if text is selected, show a floating "Add anonymisation" button near selection
@@ -217,8 +220,9 @@ Single file. Three views managed by a JS state machine (no page reload, no frame
 - "Prompt external model →" button (primary) → View 3
 
 ### View 3 — Response
-- Response text rendered with de-anonymised values wrapped in green `<mark>` elements
-- Hovering a green mark shows a tooltip with the placeholder that was used (e.g. `[NAME_1]`)
+- Response text rendered with de-anonymised values wrapped in green `<mark>` elements (auto-detected) or teal (CUSTOM)
+- "Copy" button in the response card title row (copies the de-anonymised plain text)
+- Hovering a green/teal mark shows a tooltip with the placeholder that was used (e.g. `[NAME_1]`)
 - PII summary table below:
   | Anonymised as | Original value |
 - "Start over" button → clears session state, returns to View 1
