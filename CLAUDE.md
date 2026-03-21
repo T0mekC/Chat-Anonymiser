@@ -51,8 +51,8 @@ User input ──► phi3:3.8b (Ollama, local) ──► entity detection
                               highlighted de-anonymised response ──► user
 ```
 
-**PII entity types detected:** NAME · EMAIL · ADDRESS · COMPANY · PHONE · URL · SSN · WBS_CODE · OTHER_PII
-**Excluded from detection:** dates, times, timestamps, generic job titles, standalone country/city names
+**PII entity types detected:** NAME · EMAIL · PHONE · ADDRESS · COMPANY · URL · SSN · USERNAME · DOB · FINANCE · IP_ADDRESS · COORDINATES · WBS_CODE · OTHER_PII
+**Excluded from detection:** generic dates/times/timestamps (not DOB), standalone country/city names
 
 ---
 
@@ -116,13 +116,18 @@ User input ──► phi3:3.8b (Ollama, local) ──► entity detection
 
 | Entity type | Faker call |
 |-------------|-----------|
-| NAME | `faker.name()` |
+| NAME | `faker.name()` (spaces removed) |
 | EMAIL | `faker.email()` |
 | PHONE | `faker.phone_number()` |
 | ADDRESS | `faker.address()` (newlines flattened to `, `) |
-| COMPANY | `faker.company()` |
+| COMPANY | `faker.company()` (spaces removed) |
 | URL | `faker.url()` |
 | SSN | `faker.ssn()` (en_US format) |
+| USERNAME | `faker.user_name()` |
+| DOB | `faker.date_of_birth(minimum_age=18, maximum_age=65)` formatted `%d %b %Y` |
+| FINANCE | `faker.iban()` |
+| IP_ADDRESS | `faker.ipv4()` |
+| COORDINATES | `f"{faker.latitude()}, {faker.longitude()}"` |
 | WBS_CODE | `PRJ-XXXX` (sequential, no Faker equivalent) |
 | OTHER_PII | `faker.uuid4()` |
 
@@ -158,19 +163,23 @@ The backend also returns character ranges of restored values for frontend highli
 ### Entity types
 | Type | Detects |
 |------|---------|
-| NAME | Full names, first/last names, nicknames, usernames |
+| NAME | Full names, first/last names, nicknames |
 | EMAIL | Email addresses |
 | PHONE | Phone numbers in any format |
 | ADDRESS | Street addresses, postcodes, building+city combinations |
 | COMPANY | Company names, brand names, organisation names |
 | URL | Web addresses, domain names |
-| SSN | Social security / national ID numbers (PESEL, NIP, etc.) |
+| SSN | Social security / national ID numbers (PESEL, NIP, passport, etc.) |
+| USERNAME | Usernames, login names, handles |
+| DOB | Dates of birth specifically (not generic dates or timestamps) |
+| FINANCE | IBANs, bank account numbers, credit card numbers |
+| IP_ADDRESS | IPv4/IPv6 addresses, MAC addresses |
+| COORDINATES | Geographic coordinates, latitude/longitude pairs |
 | WBS_CODE | Project / work-breakdown-structure codes |
 | OTHER_PII | Any other sensitive identifier |
 
 ### Explicitly excluded from detection
-- Dates, times, timestamps (e.g. "12 March 2025", "14:30", "Q1 2024")
-- Generic job titles without a name attached (e.g. "the manager", "CEO")
+- Generic dates, times, timestamps (e.g. "12 March 2025", "14:30", "Q1 2024") — DOB is included
 - Standalone country or city names used generically (e.g. "London", "Poland")
 
 ---

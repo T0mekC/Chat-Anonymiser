@@ -11,31 +11,34 @@ from config import OLLAMA_BASE_URL, OLLAMA_MODEL
 OLLAMA_TIMEOUT = 120.0  # phi3:mini can be slow on first run
 
 SYSTEM_PROMPT = (
-    "You are a PII detection assistant. "
-    "Your only job is to find sensitive or identifying information in text and list it as a JSON array. "
-    "Each item has two fields: \"value\" (exact substring from the text) and \"type\" (see categories). "
-    "Categories: NAME, EMAIL, PHONE, ADDRESS, COMPANY, URL, SSN, WBS_CODE, OTHER_PII. "
-    "Never flag dates, times, or timestamps. "
-    "Output only the JSON array and nothing else."
+    "You are a PII detection assistant. Your only job is to find sensitive or identifying information in text and list it as a JSON array. Each item has two fields: \"value\" (exact substring from the text) and \"type\" (see categories). Categories: NAME, EMAIL, PHONE, ADDRESS, COMPANY, URL, SSN, USERNAME, DOB, FINANCE, IP_ADDRESS, COORDINATES, WBS_CODE, OTHER_PII. Never flag generic dates, times, or timestamps — only flag dates of birth (DOB). Output only the JSON array and nothing else."
 )
 
 USER_PROMPT_TEMPLATE = """Find all proper nouns, personal data and sensitive identifiers in the TEXT below.
 
 Include:
-- Personal names, nicknames (NAME)
+- Personal names from any culture or language — including Asian, Arabic, Eastern European and other non-Western names (NAME)
 - Email addresses (EMAIL)
 - Phone numbers in any format (PHONE)
 - Street addresses, postcodes (ADDRESS)
 - Company / organisation / brand names (COMPANY)
 - URLs and domain names (URL)
-- ID numbers: SSN, PESEL, NIP, passport, bank account (SSN)
+- ID numbers: SSN, PESEL, NIP, passport number (SSN)
+- Usernames, login names, handles (USERNAME)
+- Dates of birth, birth dates — NOT generic dates or timestamps (DOB)
+- IBANs, bank account numbers, credit card numbers (FINANCE)
+- IP addresses (IPv4 / IPv6), MAC addresses (IP_ADDRESS)
+- Geographic coordinates, latitude/longitude pairs (COORDINATES)
 - Project / WBS codes (WBS_CODE)
 - Any other sensitive identifier (OTHER_PII)
 
-Do NOT include: dates, times, standalone country or city names, generic job titles.
+Do NOT include: generic dates, times, timestamps (e.g. "12 March 2025", "14:30", "Q1 2024"), standalone city or country names.
 
 Example input: "Hi, I'm Sarah Connor. Call me at +1-800-555-0199 or sarah@sky.net. I work at Cyberdyne Systems, 18144 El Camino Real."
 Example output: [{{"value":"Sarah Connor","type":"NAME"}},{{"value":"+1-800-555-0199","type":"PHONE"}},{{"value":"sarah@sky.net","type":"EMAIL"}},{{"value":"Cyberdyne Systems","type":"COMPANY"}},{{"value":"18144 El Camino Real","type":"ADDRESS"}}]
+
+Example input: "Please contact Yuki Sato at yuki.sato@corp.jp or Mohammed Al-Rashid at +971-50-123-4567."
+Example output: [{{"value":"Yuki Sato","type":"NAME"}},{{"value":"yuki.sato@corp.jp","type":"EMAIL"}},{{"value":"Mohammed Al-Rashid","type":"NAME"}},{{"value":"+971-50-123-4567","type":"PHONE"}}]
 
 TEXT:
 {text}
@@ -94,7 +97,11 @@ async def detect_entities(text: str) -> list[dict]:
     entities = _extract_json_array(raw_output)
 
     # Validate and normalise: keep only entries with non-empty value and known/unknown type
-    valid_types = {"NAME", "EMAIL", "ADDRESS", "COMPANY", "PHONE", "URL", "SSN", "WBS_CODE", "OTHER_PII"}
+    valid_types = {
+        "NAME", "EMAIL", "ADDRESS", "COMPANY", "PHONE", "URL", "SSN",
+        "USERNAME", "DOB", "FINANCE", "IP_ADDRESS", "COORDINATES",
+        "WBS_CODE", "OTHER_PII",
+    }
     cleaned = []
     seen_values = set()
     for item in entities:

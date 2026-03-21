@@ -6,21 +6,26 @@ from faker import Faker
 
 SESSION_TTL = 2 * 60 * 60  # 2 hours in seconds
 
-# Each session: { "mapping": {"Jane Doe": "Anna Kowalski", ...}, "fakes": set(), "created_at": float }
+# Each session: { "mapping": {fake: original}, "types": {fake: entity_type}, "fakes": set(), "created_at": float }
 _store: dict[str, dict] = {}
 _lock = threading.Lock()
 
 _faker = Faker()
 
 _FAKER_GENERATORS = {
-    "NAME":      lambda: _faker.name().replace(" ", ""),
-    "EMAIL":     lambda: _faker.email(),
-    "PHONE":     lambda: _faker.phone_number(),
-    "ADDRESS":   lambda: _faker.address().replace("\n", ", "),
-    "COMPANY":   lambda: _faker.company().replace(" ", ""),
-    "URL":       lambda: _faker.url(),
-    "SSN":       lambda: _faker.ssn(),
-    "OTHER_PII": lambda: _faker.uuid4(),
+    "NAME":        lambda: _faker.name().replace(" ", ""),
+    "EMAIL":       lambda: _faker.email(),
+    "PHONE":       lambda: _faker.phone_number(),
+    "ADDRESS":     lambda: _faker.address().replace("\n", ", "),
+    "COMPANY":     lambda: _faker.company().replace(" ", ""),
+    "URL":         lambda: _faker.url(),
+    "SSN":         lambda: _faker.ssn(),
+    "USERNAME":    lambda: _faker.user_name(),
+    "DOB":         lambda: _faker.date_of_birth(minimum_age=18, maximum_age=65).strftime("%d %b %Y"),
+    "FINANCE":     lambda: _faker.iban(),
+    "IP_ADDRESS":  lambda: _faker.ipv4(),
+    "COORDINATES": lambda: f"{_faker.latitude()}, {_faker.longitude()}",
+    "OTHER_PII":   lambda: _faker.uuid4(),
 }
 
 
@@ -57,6 +62,7 @@ def create_session(session_id: str) -> None:
     with _lock:
         _store[session_id] = {
             "mapping": {},
+            "types": {},
             "fakes": set(),
             "created_at": time.time(),
         }
@@ -93,6 +99,7 @@ def get_or_create_fake(session_id: str, original: str, entity_type: str) -> str:
 
         fake = _generate_unique_fake(session, entity_type)
         mapping[fake] = original
+        session["types"][fake] = entity_type
         return fake
 
 
@@ -105,6 +112,7 @@ def add_custom_fake(session_id: str, original: str, fake: str) -> str:
     quoted = fake if (fake.startswith("<custom>") and fake.endswith("</custom>")) else f"<custom>{fake}</custom>"
     with _lock:
         session["mapping"][quoted] = original
+        session["types"][quoted] = "CUSTOM"
         session["fakes"].add(quoted)
     return quoted
 
@@ -116,12 +124,17 @@ def remove_fake(session_id: str, fake: str) -> Optional[str]:
         raise KeyError(f"Session {session_id} not found")
     with _lock:
         session["fakes"].discard(fake)
+        session["types"].pop(fake, None)
         return session["mapping"].pop(fake, None)
 
 
 def list_entities(session_id: str) -> list[dict]:
-    """Return list of {fake, original} dicts."""
-    mapping = get_mapping(session_id)
-    if mapping is None:
+    """Return list of {fake, original, type} dicts."""
+    session = get_session(session_id)
+    if session is None:
         return []
-    return [{"fake": k, "original": v} for k, v in mapping.items()]
+    types = session["types"]
+    return [
+        {"fake": k, "original": v, "type": types.get(k, "OTHER_PII")}
+        for k, v in session["mapping"].items()
+    ]

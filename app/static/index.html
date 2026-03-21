@@ -462,6 +462,7 @@
           <tr>
             <th>Anonymised as</th>
             <th>Original value</th>
+            <th>Entity type</th>
             <th style="width:6rem;"></th>
           </tr>
         </thead>
@@ -492,6 +493,7 @@
           <tr>
             <th>Anonymised as</th>
             <th>Original value</th>
+            <th>Entity type</th>
           </tr>
         </thead>
         <tbody id="response-entity-tbody"></tbody>
@@ -617,16 +619,17 @@ function renderEntityTable() {
   tbody.innerHTML = '';
 
   if (!state.entities.length) {
-    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);padding:1.2rem;">No entities.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);padding:1.2rem;">No entities.</td></tr>';
     return;
   }
 
-  state.entities.forEach(({ fake, original }) => {
+  state.entities.forEach(({ fake, original, type }) => {
     const tr = document.createElement('tr');
     const badgeCls = fake.startsWith('<custom>') ? 'badge badge-custom' : 'badge';
     tr.innerHTML = `
       <td><span class="${badgeCls}">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
+      <td>${escHtml(type || '')}</td>
       <td><button class="btn btn-ghost" data-ph="${escHtml(fake)}">Remove</button></td>
     `;
     tr.querySelector('button').addEventListener('click', () => removeEntity(fake));
@@ -657,15 +660,16 @@ function renderResponseEntityTable(entities) {
   const tbody = $('response-entity-tbody');
   tbody.innerHTML = '';
   if (!entities.length) {
-    tbody.innerHTML = '<tr><td colspan="2" style="color:var(--muted);">No entities.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);">No entities.</td></tr>';
     return;
   }
-  entities.forEach(({ fake, original }) => {
+  entities.forEach(({ fake, original, type }) => {
     const tr = document.createElement('tr');
     const badgeCls = fake.startsWith('<custom>') ? 'badge badge-custom' : 'badge';
     tr.innerHTML = `
       <td><span class="${badgeCls}">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
+      <td>${escHtml(type || '')}</td>
     `;
     tbody.appendChild(tr);
   });
