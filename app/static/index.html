@@ -519,10 +519,19 @@
       <div class="app-footer__desc">
         Designed to let you use external AI models without exposing sensitive information.
         Before your prompt leaves your device, a local model detects personal data — names,
-        emails, phone numbers, addresses, and more — and replaces each with a realistic
-        fake generated on-device. The external model sees only the sanitised text and
-        never has access to the originals. When the response arrives, every fake is
-        swapped back so you read the answer with your real data restored.
+        emails, phone numbers, addresses, and more — and replaces each with a labelled
+        placeholder that is contextually understandable, so the external model can still
+        reason about your request naturally. You decide what gets anonymised: review every
+        detected item, remove anything you're comfortable sharing, and add your own. Only
+        you choose what leaves your device. When the response arrives, every placeholder
+        is swapped back so you read the answer with your real data restored.
+      </div>
+      <div style="margin-top:1.4rem;font-size:1.3rem;color:var(--muted);line-height:1.9;">
+        <span style="font-weight:700;color:var(--text);">Tips for best results</span><br>
+        › When asking the model to rewrite or summarise text, wrap it in quotation marks — this helps the model understand what to act on versus your instructions.<br>
+        › When adding a custom anonymisation, use a descriptive label (e.g. <em>this person's SSN</em>, <em>client company name</em>) so the model can reason about it in context.<br>
+        › Glance at the anonymised text before sending — the local model may occasionally miss uncommon formats. Use <em>Add anonymisation</em> for anything that slipped through.<br>
+        › Remove false positives freely — if something was flagged that isn't actually sensitive, hit Remove. Unnecessary placeholders can make the model's response less natural.
       </div>
     </div>
   </div>
