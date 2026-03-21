@@ -1,6 +1,6 @@
 # Prompt Anonymiser
 
-Anonymises sensitive information in your prompts before sending them to an external AI model. Personal data — names, emails, phone numbers, addresses, and more — is replaced with realistic fakes generated locally. The external model never sees your real data. When the response arrives, fakes are swapped back so you read the answer with your original information restored.
+Anonymises sensitive information in your prompts before sending them to an external AI model. Personal data — names, emails, phone numbers, addresses, and more — is detected locally and replaced with opaque placeholders (e.g. `[NAME_1]`, `[EMAIL_1]`). The external model never sees your real data. When the response arrives, placeholders are swapped back so you read the answer with your original information restored.
 
 ---
 

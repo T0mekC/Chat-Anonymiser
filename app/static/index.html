@@ -403,8 +403,8 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal__title" id="modal-title">Add anonymisation</div>
     <div id="modal-selected-text" style="font-size:1.3rem;color:var(--muted);margin-bottom:1.6rem;"></div>
-    <label class="modal__label" for="modal-placeholder-input">Replace with (fake value)</label>
-    <input class="modal__input" id="modal-placeholder-input" type="text" placeholder="e.g. Bob Smith" />
+    <label class="modal__label" for="modal-placeholder-input">Replace with</label>
+    <input class="modal__input" id="modal-placeholder-input" type="text" placeholder="e.g. John Smith" />
     <div class="modal__actions">
       <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
       <button class="btn btn-primary" id="modal-confirm">Confirm</button>
@@ -449,7 +449,7 @@
           <textarea id="original-display" class="textarea textarea--readonly" readonly></textarea>
         </div>
         <div>
-          <div class="split__label">Anonymised &nbsp;<span style="font-size:1.2rem;color:var(--muted);font-weight:400;">(select text to add anonymisation)</span></div>
+          <div class="split__label" style="display:flex;align-items:center;gap:.8rem;">Anonymised &nbsp;<span style="font-size:1.2rem;color:var(--muted);font-weight:400;">(select text to add anonymisation)</span><button class="btn btn-ghost" id="btn-copy-anon" style="margin-left:auto;">Copy</button></div>
           <div id="anon-panel" class="anon-panel"></div>
         </div>
       </div>
@@ -481,7 +481,7 @@
     <div class="section-title">Response</div>
 
     <div class="card">
-      <div class="card__title">De-anonymised response</div>
+      <div class="card__title" style="display:flex;align-items:center;">De-anonymised response<button class="btn btn-ghost" id="btn-copy-response" style="margin-left:auto;">Copy</button></div>
       <div id="response-error" class="alert alert-error hidden"></div>
       <div id="response-body" class="response-body"></div>
     </div>
@@ -594,7 +594,8 @@ function renderAnonPanel(text) {
     const parts = text.split(re);
     const html = parts.map(part => {
       if (fakes.includes(part)) {
-        const cls = part.startsWith('<custom>') ? 'custom' : 'pii';
+        const entity = state.entities.find(e => e.fake === part);
+        const cls = entity?.type === 'CUSTOM' ? 'custom' : 'pii';
         return `<mark class="${cls}">${escHtml(part)}</mark>`;
       }
       return escHtml(part);
@@ -625,7 +626,7 @@ function renderEntityTable() {
 
   state.entities.forEach(({ fake, original, type }) => {
     const tr = document.createElement('tr');
-    const badgeCls = fake.startsWith('<custom>') ? 'badge badge-custom' : 'badge';
+    const badgeCls = type === 'CUSTOM' ? 'badge badge-custom' : 'badge';
     tr.innerHTML = `
       <td><span class="${badgeCls}">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
@@ -648,7 +649,8 @@ function renderResponse(text, ranges) {
   let cursor = 0;
   ranges.forEach(({ start, end, fake, original }) => {
     html += escHtml(text.slice(cursor, start));
-    const cls = fake.startsWith('<custom>') ? 'custom' : 'pii';
+    const entity = state.entities.find(e => e.fake === fake);
+    const cls = entity?.type === 'CUSTOM' ? 'custom' : 'pii';
     html += `<mark class="${cls}" data-fake="${escHtml(fake)}">${escHtml(original)}</mark>`;
     cursor = end;
   });
@@ -665,7 +667,7 @@ function renderResponseEntityTable(entities) {
   }
   entities.forEach(({ fake, original, type }) => {
     const tr = document.createElement('tr');
-    const badgeCls = fake.startsWith('<custom>') ? 'badge badge-custom' : 'badge';
+    const badgeCls = type === 'CUSTOM' ? 'badge badge-custom' : 'badge';
     tr.innerHTML = `
       <td><span class="${badgeCls}">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
@@ -853,6 +855,7 @@ $('btn-complete').addEventListener('click', async () => {
       session_id: state.sessionId,
       anonymised_text: state.anonymisedText,
     });
+    state.entities = result.entities;
     renderResponse(result.response_text, result.highlighted_ranges);
     renderResponseEntityTable(result.entities);
     showView('response');
@@ -861,6 +864,23 @@ $('btn-complete').addEventListener('click', async () => {
   } finally {
     hideSpinner();
   }
+});
+
+// ── Copy buttons ───────────────────────────────────────────────────────────
+function flashCopy(btn) {
+  btn.textContent = 'Copied!';
+  btn.disabled = true;
+  setTimeout(() => { btn.textContent = 'Copy'; btn.disabled = false; }, 1500);
+}
+
+$('btn-copy-anon').addEventListener('click', () => {
+  navigator.clipboard.writeText(state.anonymisedText);
+  flashCopy($('btn-copy-anon'));
+});
+
+$('btn-copy-response').addEventListener('click', () => {
+  navigator.clipboard.writeText($('response-body').textContent);
+  flashCopy($('btn-copy-response'));
 });
 
 // ── Navigation ─────────────────────────────────────────────────────────────

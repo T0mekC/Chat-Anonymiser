@@ -119,47 +119,61 @@ async def detect_entities(text: str) -> list[dict]:
 
 def apply_replacements(text: str, replacements: dict[str, str]) -> str:
     """
-    Replace original values with placeholders.
+    Replace original values with placeholders in a single pass.
     replacements: { "[NAME_1]": "Jane Doe", ... }
-    Sorted longest-first to avoid partial-match collisions.
+    Longest original first so partial-match collisions can't occur.
     """
-    # Invert: original → placeholder
+    if not replacements:
+        return text
+    # Invert: original → placeholder, sorted longest-original-first
     pairs = sorted(
         ((original, placeholder) for placeholder, original in replacements.items()),
         key=lambda x: len(x[0]),
         reverse=True,
     )
-    for original, placeholder in pairs:
-        text = text.replace(original, placeholder)
-    return text
+    pattern = re.compile('|'.join(re.escape(orig) for orig, _ in pairs))
+    lookup = {orig: ph for orig, ph in pairs}
+    return pattern.sub(lambda m: lookup[m.group(0)], text)
 
 
 def restore_replacements(text: str, replacements: dict[str, str]) -> tuple[str, list[dict]]:
     """
-    Replace placeholders with original values.
+    Replace placeholders with original values in a single pass.
     replacements: { "[NAME_1]": "Jane Doe", ... }
     Returns (restored_text, highlighted_ranges) where each range is
-    {"start": int, "end": int, "placeholder": str, "original": str}.
-    Sorted longest-placeholder-first to avoid partial collisions.
+    {"start": int, "end": int, "fake": str, "original": str}.
+
+    Single-pass via re.finditer so every position is visited exactly once —
+    no cascading replacements and all range offsets are relative to the
+    final output string (not an intermediate mutation).
     """
+    if not replacements:
+        return text, []
+
     pairs = sorted(replacements.items(), key=lambda x: len(x[0]), reverse=True)
+    pattern = re.compile('|'.join(re.escape(ph) for ph, _ in pairs))
+
+    result: list[str] = []
     ranges: list[dict] = []
+    out_pos = 0
+    prev_end = 0
 
-    for placeholder, original in pairs:
-        start = 0
-        while True:
-            idx = text.find(placeholder, start)
-            if idx == -1:
-                break
-            text = text[:idx] + original + text[idx + len(placeholder):]
-            ranges.append({
-                "start": idx,
-                "end": idx + len(original),
-                "fake": placeholder,
-                "original": original,
-            })
-            start = idx + len(original)
+    for m in pattern.finditer(text):
+        segment = text[prev_end:m.start()]
+        result.append(segment)
+        out_pos += len(segment)
 
-    # Sort ranges by start position for the frontend
-    ranges.sort(key=lambda r: r["start"])
-    return text, ranges
+        placeholder = m.group(0)
+        original = replacements[placeholder]
+        result.append(original)
+        ranges.append({
+            "start": out_pos,
+            "end": out_pos + len(original),
+            "fake": placeholder,
+            "original": original,
+        })
+        out_pos += len(original)
+        prev_end = m.end()
+
+    result.append(text[prev_end:])
+    return ''.join(result), ranges

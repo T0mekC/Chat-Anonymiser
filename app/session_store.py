@@ -2,60 +2,21 @@ import time
 import threading
 from typing import Optional
 
-from faker import Faker
-
 SESSION_TTL = 2 * 60 * 60  # 2 hours in seconds
 
-# Each session: { "mapping": {fake: original}, "types": {fake: entity_type}, "fakes": set(), "created_at": float }
+# Each session: { "mapping": {placeholder: original}, "types": {placeholder: entity_type},
+#                 "fakes": set(), "counters": {type: int}, "created_at": float }
 _store: dict[str, dict] = {}
 _lock = threading.Lock()
 
-_faker = Faker()
 
-_FAKER_GENERATORS = {
-    "NAME":        lambda: _faker.name().replace(" ", ""),
-    "EMAIL":       lambda: _faker.email(),
-    "PHONE":       lambda: _faker.phone_number(),
-    "ADDRESS":     lambda: _faker.address().replace("\n", ", "),
-    "COMPANY":     lambda: _faker.company().replace(" ", ""),
-    "URL":         lambda: _faker.url(),
-    "SSN":         lambda: _faker.ssn(),
-    "USERNAME":    lambda: _faker.user_name(),
-    "DOB":         lambda: _faker.date_of_birth(minimum_age=18, maximum_age=65).strftime("%d %b %Y"),
-    "FINANCE":     lambda: _faker.iban(),
-    "IP_ADDRESS":  lambda: _faker.ipv4(),
-    "COORDINATES": lambda: f"{_faker.latitude()}, {_faker.longitude()}",
-    "OTHER_PII":   lambda: _faker.uuid4(),
-}
-
-
-def _generate_unique_fake(session: dict, entity_type: str) -> str:
-    """Generate a Faker value that is unique within this session."""
-    fakes = session["fakes"]
-    generator = _FAKER_GENERATORS.get(entity_type)
-
-    if generator is None:
-        # WBS_CODE: no Faker equivalent
-        base = f"PRJ-{len(fakes) + 1:04d}"
-    else:
-        base = generator()
-
-    candidate = base
-    attempts = 0
-    while candidate in fakes and attempts < 10:
-        candidate = generator() if generator else f"{base}-{attempts + 1}"
-        attempts += 1
-
-    # Last resort: append numeric suffix
-    suffix = 2
-    while candidate in fakes:
-        candidate = f"{base}-{suffix}"
-        suffix += 1
-
-    # Wrap in structured delimiter so the external model treats it as an opaque token
-    candidate = f"<fake>{candidate}</fake>"
-    fakes.add(candidate)
-    return candidate
+def _next_placeholder(session: dict, entity_type: str) -> str:
+    """Generate the next sequential placeholder for a given entity type, e.g. [NAME_1]."""
+    counters = session["counters"]
+    counters[entity_type] = counters.get(entity_type, 0) + 1
+    placeholder = f"[{entity_type}_{counters[entity_type]}]"
+    session["fakes"].add(placeholder)
+    return placeholder
 
 
 def create_session(session_id: str) -> None:
@@ -64,6 +25,7 @@ def create_session(session_id: str) -> None:
             "mapping": {},
             "types": {},
             "fakes": set(),
+            "counters": {},
             "created_at": time.time(),
         }
 
@@ -85,36 +47,41 @@ def get_mapping(session_id: str) -> Optional[dict[str, str]]:
 
 
 def get_or_create_fake(session_id: str, original: str, entity_type: str) -> str:
-    """Return existing fake for this value or generate a new one."""
+    """Return existing placeholder for this value or generate a new one."""
     session = get_session(session_id)
     if session is None:
         raise KeyError(f"Session {session_id} not found")
 
     with _lock:
         mapping = session["mapping"]
-        # Return existing fake if we've seen this value before
-        for fake, value in mapping.items():
+        # Return existing placeholder if we've seen this value before
+        for placeholder, value in mapping.items():
             if value == original:
-                return fake
+                return placeholder
 
-        fake = _generate_unique_fake(session, entity_type)
-        mapping[fake] = original
-        session["types"][fake] = entity_type
-        return fake
+        placeholder = _next_placeholder(session, entity_type)
+        mapping[placeholder] = original
+        session["types"][placeholder] = entity_type
+        return placeholder
 
 
 def add_custom_fake(session_id: str, original: str, fake: str) -> str:
-    """Add a user-defined mapping entry. Returns the wrapped fake value."""
+    """Add a user-defined mapping entry.
+
+    The user-supplied label is wrapped in [...] brackets so it is treated as
+    an opaque placeholder token (like [NAME_1]) rather than real-looking text
+    that Claude might modify during rewriting. If the user already typed brackets
+    they are not doubled.
+    """
     session = get_session(session_id)
     if session is None:
         raise KeyError(f"Session {session_id} not found")
-    # Wrap in custom delimiter if not already wrapped
-    quoted = fake if (fake.startswith("<custom>") and fake.endswith("</custom>")) else f"<custom>{fake}</custom>"
+    placeholder = fake if (fake.startswith("[") and fake.endswith("]")) else f"[{fake}]"
     with _lock:
-        session["mapping"][quoted] = original
-        session["types"][quoted] = "CUSTOM"
-        session["fakes"].add(quoted)
-    return quoted
+        session["mapping"][placeholder] = original
+        session["types"][placeholder] = "CUSTOM"
+        session["fakes"].add(placeholder)
+    return placeholder
 
 
 def remove_fake(session_id: str, fake: str) -> Optional[str]:
