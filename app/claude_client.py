@@ -13,6 +13,8 @@ SYSTEM_PROMPT = (
     "These tokens stand in for real names, organisations, and other sensitive values. "
     "You MUST copy every placeholder into your response exactly as it appears — "
     "never expand, replace, paraphrase, split, or omit them. "
+    "Each placeholder is a single indivisible token — always keep a space on each side of it; "
+    "never attach it directly to adjacent words or other placeholders. "
     "Respond helpfully to the request as written."
 )
 
