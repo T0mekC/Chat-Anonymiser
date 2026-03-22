@@ -42,6 +42,10 @@ sudo rm -f /etc/nginx/conf.d/default.conf
 sudo nginx -t
 sudo systemctl enable --now nginx
 
+# ── X-Ray daemon ─────────────────────────────────────────────────────────────
+sudo dnf install -y aws-xray-daemon
+sudo systemctl enable --now aws-xray-daemon
+
 # ── Done ─────────────────────────────────────────────────────────────────────
 # Fetch public IP via IMDSv2 (HttpTokens=required)
 TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \

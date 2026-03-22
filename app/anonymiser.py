@@ -6,6 +6,7 @@ The backend (session_store + main.py) performs the actual text replacement.
 import json
 import re
 import httpx
+from aws_xray_sdk.core import xray_recorder
 from config import OLLAMA_BASE_URL, OLLAMA_MODEL
 
 OLLAMA_TIMEOUT = 120.0  # phi3:mini can be slow on first run
@@ -61,11 +62,13 @@ async def detect_entities(text: str) -> list[dict]:
     }
 
     async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-        response = await client.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json=payload,
-        )
-        response.raise_for_status()
+        with xray_recorder.in_subsegment("ollama") as subsegment:
+            subsegment.put_annotation("model", OLLAMA_MODEL)
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json=payload,
+            )
+            response.raise_for_status()
 
     data = response.json()
     raw_output = data.get("response", "")

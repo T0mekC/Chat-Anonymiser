@@ -51,6 +51,7 @@ The instance has no SSH port open. You access it via **AWS Systems Manager Sessi
 3. On the *Add permissions* screen, search for and tick:
    - `AmazonSSMManagedInstanceCore` — enables Session Manager access
    - `CloudWatchAgentServerPolicy` — enables application log forwarding
+   - `AWSXRayDaemonWriteAccess` — allows the X-Ray daemon to send traces
 4. Click **Next**, name the role `chat-anonymiser-ec2-role`, then **Create role**.
 5. After creation, open the role and click **Add permissions → Create inline policy**.
 6. Switch to the **JSON** editor and paste the policy below, replacing `<region>` and `<account-id>`:

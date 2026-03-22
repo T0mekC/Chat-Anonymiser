@@ -6,12 +6,32 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from aws_xray_sdk.core import xray_recorder, patch
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import session_store
 import anonymiser as anon
 import claude_client
 
 app = FastAPI(title="Chat Anonymiser")
+
+xray_recorder.configure(
+    service="chat-anonymiser",
+    context_missing="LOG_ERROR",
+)
+patch(["boto3"])
+
+
+class _XRayMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        xray_recorder.begin_segment(f"{request.method} {request.url.path}")
+        try:
+            return await call_next(request)
+        finally:
+            xray_recorder.end_segment()
+
+
+app.add_middleware(_XRayMiddleware)
 
 
 @app.exception_handler(Exception)
