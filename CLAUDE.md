@@ -51,8 +51,7 @@ User input ──► phi3:3.8b (Ollama, local) ──► entity detection
                               highlighted de-anonymised response ──► user
 ```
 
-**PII entity types detected:** NAME · EMAIL · PHONE · ADDRESS · COMPANY · URL · SSN · USERNAME · DOB · FINANCE · IP_ADDRESS · COORDINATES · WBS_CODE · OTHER_PII
-**Excluded from detection:** generic dates/times/timestamps (not DOB), standalone country/city names
+**PII entity types detected:** NAME · EMAIL · PHONE · ADDRESS · COMPANY · URL · SSN · USERNAME · DOB · FINANCE · IP_ADDRESS · COORDINATES · WBS_CODE · PASSPORT · NUMBER_PLATE · CVV · NATIONAL_ID · OTHER_PII
 
 ---
 
@@ -138,12 +137,15 @@ Output positions are accumulated as text is emitted — no intermediate mutation
 
 - Calls Ollama at `http://localhost:11434/api/generate` (overridable via `OLLAMA_BASE_URL` in `.env`)
 - Model: `phi3:3.8b` (verify with `ollama list`)
-- Uses `temperature: 0` and `stream: false` for deterministic JSON output
-- Prompt returns a JSON array of detected entities:
+- Uses `temperature: 0.2` and `stream: false`
+- System prompt (`SYSTEM_PROMPT`) tells the model to output only a JSON array with `"value"` and `"type"` fields and lists the valid categories.
+- User prompt (`USER_PROMPT_TEMPLATE`) is intentionally minimal: `"Find all potential sensitive information PII in this text:"` — a verbose bullet list was found to bias the model toward a narrow set of types.
+- Output is a JSON array of detected entities:
   ```json
   [{"value": "Anna Kowalski", "type": "NAME"}, {"value": "anna.k@gmail.com", "type": "EMAIL"}]
   ```
 - **Detection only** — the model identifies real values; `session_store` generates `[TYPE_N]` placeholder tokens; `anonymiser.apply_replacements` does the text substitution.
+- Types not in `valid_types` are remapped to `OTHER_PII` before returning.
 - If Ollama is unreachable, raises HTTP 503: "please ensure Ollama is running on your device. Run terminal command: ollama serve"
 - All `httpx.HTTPError` subclasses (connect error, timeout, HTTP status error) are caught and returned as 503.
 
@@ -156,18 +158,18 @@ Output positions are accumulated as text is emitted — no intermediate mutation
 | ADDRESS | Street addresses, postcodes, building+city combinations |
 | COMPANY | Company names, brand names, organisation names |
 | URL | Web addresses, domain names |
-| SSN | Social security / national ID numbers (PESEL, NIP, passport, etc.) |
+| SSN | Social security / national ID numbers (PESEL, NIP, etc.) |
 | USERNAME | Usernames, login names, handles |
 | DOB | Dates of birth specifically (not generic dates or timestamps) |
 | FINANCE | IBANs, bank account numbers, credit card numbers |
 | IP_ADDRESS | IPv4/IPv6 addresses, MAC addresses |
 | COORDINATES | Geographic coordinates, latitude/longitude pairs |
 | WBS_CODE | Project / work-breakdown-structure codes |
+| PASSPORT | Passport numbers |
+| NUMBER_PLATE | Vehicle registration / licence plate numbers |
+| CVV | Card security codes |
+| NATIONAL_ID | National identity card numbers |
 | OTHER_PII | Any other sensitive identifier |
-
-### Explicitly excluded from detection
-- Generic dates, times, timestamps (e.g. "12 March 2025", "14:30", "Q1 2024") — DOB is included
-- Standalone country or city names used generically (e.g. "London", "Poland")
 
 ---
 
@@ -175,7 +177,7 @@ Output positions are accumulated as text is emitted — no intermediate mutation
 
 - Model ID: `claude-haiku-4-5`
 - Uses `anthropic` Python SDK (`AsyncAnthropic`)
-- System prompt instructs Claude to preserve all `[...]` placeholder tokens verbatim — auto-generated (`[NAME_1]`, `[EMAIL_2]`) and user-labelled (`[bank phone]`, `[customer email]`). This is how de-anonymisation works; Claude is not aware these stand in for real values.
+- System prompt instructs Claude to preserve all `[...]` placeholder tokens verbatim — auto-generated (`[NAME_1]`, `[EMAIL_2]`) and user-labelled (`[bank phone]`, `[customer email]`). Claude is also told to keep a space on each side of every placeholder and never attach it directly to adjacent words or other placeholders. This is how de-anonymisation works; Claude is not aware these stand in for real values.
 - `max_tokens`: 2048
 - API key loaded from `.env` via `config.py` — never hardcoded, never logged.
 
