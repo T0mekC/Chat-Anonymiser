@@ -5,7 +5,8 @@ from typing import Optional
 SESSION_TTL = 2 * 60 * 60  # 2 hours in seconds
 
 # Each session: { "mapping": {placeholder: original}, "types": {placeholder: entity_type},
-#                 "fakes": set(), "counters": {type: int}, "created_at": float }
+#                 "fakes": set(), "counters": {type: int},
+#                 "conversation_history": [{role, content}, ...], "created_at": float }
 _store: dict[str, dict] = {}
 _lock = threading.Lock()
 
