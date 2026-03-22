@@ -8,10 +8,28 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
 if not ANTHROPIC_API_KEY:
-    # Fallback: read from AWS SSM Parameter Store (used on EC2)
+    # Fallback: read from AWS SSM Parameter Store (used on EC2).
+    # Region is fetched from EC2 IMDS (IMDSv2) so boto3 doesn't need
+    # AWS_DEFAULT_REGION set in the environment.
     try:
+        import urllib.request
         import boto3
-        ssm = boto3.client("ssm")
+
+        _token_req = urllib.request.Request(
+            "http://169.254.169.254/latest/api/token",
+            headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"},
+            method="PUT",
+        )
+        with urllib.request.urlopen(_token_req, timeout=2) as _r:
+            _token = _r.read().decode()
+        _region_req = urllib.request.Request(
+            "http://169.254.169.254/latest/meta-data/placement/region",
+            headers={"X-aws-ec2-metadata-token": _token},
+        )
+        with urllib.request.urlopen(_region_req, timeout=2) as _r:
+            _region = _r.read().decode()
+
+        ssm = boto3.client("ssm", region_name=_region)
         response = ssm.get_parameter(
             Name="/chat-anonymiser/anthropic-api-key",
             WithDecryption=True,
