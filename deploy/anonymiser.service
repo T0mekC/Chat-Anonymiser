@@ -1,0 +1,16 @@
+[Unit]
+Description=Chat Anonymiser (FastAPI/uvicorn)
+After=network.target ollama.service
+Requires=ollama.service
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/anonymiser/app
+Environment=PATH=/home/ec2-user/anonymiser/.venv/bin
+ExecStart=/home/ec2-user/anonymiser/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
