@@ -11,7 +11,7 @@ import session_store
 import anonymiser as anon
 import claude_client
 
-app = FastAPI(title="Prompt Anonymiser")
+app = FastAPI(title="Chat Anonymiser")
 
 
 @app.exception_handler(Exception)
@@ -144,10 +144,16 @@ async def complete(req: CompleteRequest):
     if session_store.get_session(req.session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
 
+    history = session_store.get_history(req.session_id)
+    messages = history + [{"role": "user", "content": req.anonymised_text}]
+
     try:
-        raw_response = await claude_client.complete(req.anonymised_text)
+        raw_response = await claude_client.complete(messages)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Claude API error: {exc}")
+
+    session_store.append_to_history(req.session_id, "user", req.anonymised_text)
+    session_store.append_to_history(req.session_id, "assistant", raw_response)
 
     mapping = session_store.get_mapping(req.session_id)
     response_text, highlighted_ranges = anon.restore_replacements(raw_response, mapping)

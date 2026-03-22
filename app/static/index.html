@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Prompt Anonymiser</title>
+  <title>Chat Anonymiser</title>
   <link rel="stylesheet" href="/style.css" />
   <link rel="icon" type="image/svg+xml" href="/static/kitsune.svg" />
   <style>
@@ -425,8 +425,8 @@
 
 <!-- ── Header ──────────────────────────────────────────────────────── -->
 <header class="app-header">
-  <img src="/static/kitsune.svg" class="app-header__logo" alt="Prompt Anonymiser logo" />
-  <span class="app-header__title">Prompt Anonymiser</span>
+  <img src="/static/kitsune.svg" class="app-header__logo" alt="Chat Anonymiser logo" />
+  <span class="app-header__title">Chat Anonymiser</span>
   <span class="app-header__step" id="step-indicator"></span>
 </header>
 
@@ -459,6 +459,10 @@
   <!-- VIEW 1: Input -->
   <div id="view-input">
     <div class="section-title">Enter your prompt</div>
+    <div id="prev-response-card" class="card hidden">
+      <div class="card__title">Previous response</div>
+      <div id="prev-response-display" class="response-body"></div>
+    </div>
     <div class="card">
       <div class="card__title">Raw prompt</div>
       <div id="input-error" class="alert alert-error hidden"></div>
@@ -543,6 +547,7 @@
 
     <div class="actions">
       <button class="btn btn-primary" id="btn-start-over">Start over</button>
+      <button class="btn btn-outline" id="btn-continue-chat">Continue chat →</button>
     </div>
   </div>
 
@@ -553,7 +558,7 @@
   <div class="app-footer__inner">
     <img src="/static/kitsune.svg" class="app-footer__logo" alt="" />
     <div class="app-footer__text">
-      <div class="app-footer__name">Prompt Anonymiser</div>
+      <div class="app-footer__name">Chat Anonymiser</div>
       <div class="app-footer__desc">
         Designed to let you use external AI models without exposing sensitive information.
         Before your prompt leaves your trusted environment, a local model detects personal data — names,
@@ -583,6 +588,7 @@ const state = {
   anonymisedText: '',
   entities: [],           // [{fake, original}]
   pendingSelection: null, // {text, start, end} of current mouse selection
+  lastResponse: '',       // de-anonymised text from most recent /api/complete
 };
 
 // ── DOM helpers ────────────────────────────────────────────────────────────
@@ -762,8 +768,10 @@ $('btn-anonymise').addEventListener('click', async () => {
 
   showSpinner('Analysing for PII…');
   try {
-    const session = await api('/api/session', {});
-    state.sessionId = session.session_id;
+    if (!state.sessionId) {
+      const session = await api('/api/session', {});
+      state.sessionId = session.session_id;
+    }
     state.rawText = text;
 
     const result = await api('/api/anonymise', { session_id: state.sessionId, text });
@@ -935,6 +943,7 @@ $('btn-complete').addEventListener('click', async () => {
       anonymised_text: state.anonymisedText,
     });
     state.entities = result.entities;
+    state.lastResponse = result.response_text;
     renderResponse(result.response_text, result.highlighted_ranges);
     renderResponseEntityTable(result.entities);
     showView('response');
@@ -965,8 +974,20 @@ $('btn-copy-response').addEventListener('click', () => {
 // ── Navigation ─────────────────────────────────────────────────────────────
 $('btn-back-input').addEventListener('click', () => showView('input'));
 
+$('btn-continue-chat').addEventListener('click', () => {
+  Object.assign(state, { rawText: '', anonymisedText: '', entities: [], pendingSelection: null });
+  $('raw-input').value = '';
+  clearError('input-error');
+  clearError('review-error');
+  clearError('response-error');
+  $('prev-response-display').textContent = state.lastResponse;
+  $('prev-response-card').classList.remove('hidden');
+  showView('input');
+});
+
 $('btn-start-over').addEventListener('click', () => {
-  Object.assign(state, { sessionId: null, rawText: '', anonymisedText: '', entities: [], pendingSelection: null });
+  Object.assign(state, { sessionId: null, rawText: '', anonymisedText: '', entities: [], pendingSelection: null, lastResponse: '' });
+  $('prev-response-card').classList.add('hidden');
   $('raw-input').value = '';
   clearError('input-error');
   clearError('review-error');

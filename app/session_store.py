@@ -26,6 +26,7 @@ def create_session(session_id: str) -> None:
             "types": {},
             "fakes": set(),
             "counters": {},
+            "conversation_history": [],
             "created_at": time.time(),
         }
 
@@ -93,6 +94,19 @@ def remove_fake(session_id: str, fake: str) -> Optional[str]:
         session["fakes"].discard(fake)
         session["types"].pop(fake, None)
         return session["mapping"].pop(fake, None)
+
+
+def append_to_history(session_id: str, role: str, content: str) -> None:
+    session = get_session(session_id)
+    if session is None:
+        raise KeyError(f"Session {session_id} not found")
+    with _lock:
+        session["conversation_history"].append({"role": role, "content": content})
+
+
+def get_history(session_id: str) -> list[dict]:
+    session = get_session(session_id)
+    return list(session["conversation_history"]) if session else []
 
 
 def list_entities(session_id: str) -> list[dict]:

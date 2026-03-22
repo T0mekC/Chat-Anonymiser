@@ -19,9 +19,10 @@ SYSTEM_PROMPT = (
 )
 
 
-async def complete(anonymised_text: str) -> str:
+async def complete(messages: list[dict]) -> str:
     """
-    Send anonymised_text to Claude Haiku and return the response string.
+    Send a messages list to Claude Haiku and return the response string.
+    messages is a full conversation history ending with the current user turn.
     Raises anthropic.APIError on API failures.
     """
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
@@ -30,7 +31,7 @@ async def complete(anonymised_text: str) -> str:
         model=CLAUDE_MODEL,
         max_tokens=2048,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": anonymised_text}],
+        messages=messages,
     )
 
     return message.content[0].text
