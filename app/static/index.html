@@ -183,6 +183,28 @@
       min-height: 3.2rem;
     }
 
+    /* Original text panel */
+    .original-panel {
+      min-height: 22rem;
+      padding: 1.4rem 1.6rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--neutral);
+      font-size: 1.5rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: hidden;
+    }
+    .original-panel mark.original {
+      background: #E2E3E5;
+      color: #383D41;
+      border: 1px solid #D6D8DB;
+      border-radius: 3px;
+      padding: 0 .3rem;
+      font-weight: 700;
+    }
+
     /* Anonymised text panel — rich render */
     .anon-panel {
       position: relative;
@@ -214,6 +236,22 @@
       padding: 0 .3rem;
       font-weight: 700;
     }
+    .anon-panel mark.pii,
+    .anon-panel mark.custom { position: relative; }
+    .anon-panel mark .remove-x {
+      display: none;
+      position: absolute;
+      top: -.8rem;
+      right: -.7rem;
+      left: auto;
+      width: 1.5rem;
+      height: 1.5rem;
+      cursor: pointer;
+      opacity: .75;
+      z-index: 10;
+    }
+    .anon-panel mark:hover .remove-x { display: block; }
+    .anon-panel mark .remove-x:hover { opacity: 1; }
 
     /* ── Entity table ───────────────────────────────────────── */
     .entity-table {
@@ -449,7 +487,7 @@
       <div class="split">
         <div>
           <div class="split__label">Original</div>
-          <textarea id="original-display" class="textarea textarea--readonly" readonly></textarea>
+          <div id="original-display" class="original-panel"></div>
         </div>
         <div>
           <div class="split__label" style="display:flex;align-items:center;gap:.8rem;">Anonymised &nbsp;<span style="font-size:1.2rem;color:var(--muted);font-weight:400;">(select text to add anonymisation)</span><button class="btn btn-ghost" id="btn-copy-anon" style="margin-left:auto;">Copy</button></div>
@@ -608,18 +646,45 @@ function renderAnonPanel(text) {
       if (fakes.includes(part)) {
         const entity = state.entities.find(e => e.fake === part);
         const cls = entity?.type === 'CUSTOM' ? 'custom' : 'pii';
-        return `<mark class="${cls}">${escHtml(part)}</mark>`;
+        return `<mark class="${cls}" data-ph="${escHtml(part)}"><img class="remove-x" src="/static/remove-icon.svg" alt="remove" title="Remove">${escHtml(part)}</mark>`;
       }
       return escHtml(part);
     }).join('');
 
     $('anon-panel').innerHTML = html;
+
+    // Attach remove listeners
+    $('anon-panel').querySelectorAll('mark[data-ph]').forEach(mark => {
+      mark.querySelector('.remove-x').addEventListener('mousedown', e => e.preventDefault());
+      mark.querySelector('.remove-x').addEventListener('click', e => {
+        e.stopPropagation();
+        removeEntity(mark.dataset.ph);
+      });
+    });
+  }
+}
+
+function renderOriginalPanel(text) {
+  if (!text) { $('original-display').innerHTML = ''; return; }
+
+  const originals = state.entities.map(e => e.original).filter(Boolean);
+  if (!originals.length) {
+    $('original-display').textContent = text;
+    return;
   }
 
-  // Match original textarea height to the rendered anon panel
-  requestAnimationFrame(() => {
-    $('original-display').style.height = $('anon-panel').offsetHeight + 'px';
-  });
+  const sorted = [...originals].sort((a, b) => b.length - a.length);
+  const escaped = sorted.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp(`(${escaped.join('|')})`, 'g');
+
+  const parts = text.split(re);
+  const html = parts.map(part =>
+    originals.includes(part)
+      ? `<mark class="original">${escHtml(part)}</mark>`
+      : escHtml(part)
+  ).join('');
+
+  $('original-display').innerHTML = html;
 }
 
 function escHtml(s) {
@@ -705,7 +770,7 @@ $('btn-anonymise').addEventListener('click', async () => {
     state.anonymisedText = result.anonymised_text;
     state.entities = result.entities;
 
-    $('original-display').value = state.rawText;
+    renderOriginalPanel(state.rawText);
     renderAnonPanel(state.anonymisedText);
     renderEntityTable();
 
@@ -734,6 +799,7 @@ async function removeEntity(fake) {
     });
     state.anonymisedText = result.anonymised_text;
     state.entities = result.entities;
+    renderOriginalPanel(state.rawText);
     renderAnonPanel(state.anonymisedText);
     renderEntityTable();
 
@@ -845,6 +911,7 @@ async function confirmAddAnon() {
     });
     state.anonymisedText = result.anonymised_text;
     state.entities = result.entities;
+    renderOriginalPanel(state.rawText);
     renderAnonPanel(state.anonymisedText);
     renderEntityTable();
 
