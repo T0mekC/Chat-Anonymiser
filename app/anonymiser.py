@@ -6,38 +6,17 @@ The backend (session_store + main.py) performs the actual text replacement.
 import json
 import re
 import httpx
+from aws_xray_sdk.core import xray_recorder
 from config import OLLAMA_BASE_URL, OLLAMA_MODEL
 
 OLLAMA_TIMEOUT = 120.0  # phi3:mini can be slow on first run
 
 SYSTEM_PROMPT = (
-    "You are a PII detection assistant. "
-    "Your only job is to find sensitive or identifying information in text and list it as a JSON array. "
-    "Each item has two fields: \"value\" (exact substring from the text) and \"type\" (see categories). "
-    "Categories: NAME, EMAIL, PHONE, ADDRESS, COMPANY, URL, SSN, WBS_CODE, OTHER_PII. "
-    "Never flag dates, times, or timestamps. "
-    "Output only the JSON array and nothing else."
+    "Your job is to find PII and other sensitive information in text and list it as a JSON array. Each item has two fields: \"value\" (exact substring from the text) and \"type\". Try to match the type with one of the following PII categories: NAME, EMAIL, PHONE, ADDRESS, COMPANY, URL, SSN, USERNAME, JOB, DOB, FINANCE, IP_ADDRESS, COORDINATES, WBS_CODE or with OTHER_PII if match with other categories in impossible. Output only the JSON array and nothing else."
 )
 
-USER_PROMPT_TEMPLATE = """Find all proper nouns, personal data and sensitive identifiers in the TEXT below.
+USER_PROMPT_TEMPLATE = """Find all potential sensitive information PII in this text:
 
-Include:
-- Personal names, nicknames (NAME)
-- Email addresses (EMAIL)
-- Phone numbers in any format (PHONE)
-- Street addresses, postcodes (ADDRESS)
-- Company / organisation / brand names (COMPANY)
-- URLs and domain names (URL)
-- ID numbers: SSN, PESEL, NIP, passport, bank account (SSN)
-- Project / WBS codes (WBS_CODE)
-- Any other sensitive identifier (OTHER_PII)
-
-Do NOT include: dates, times, standalone country or city names, generic job titles.
-
-Example input: "Hi, I'm Sarah Connor. Call me at +1-800-555-0199 or sarah@sky.net. I work at Cyberdyne Systems, 18144 El Camino Real."
-Example output: [{{"value":"Sarah Connor","type":"NAME"}},{{"value":"+1-800-555-0199","type":"PHONE"}},{{"value":"sarah@sky.net","type":"EMAIL"}},{{"value":"Cyberdyne Systems","type":"COMPANY"}},{{"value":"18144 El Camino Real","type":"ADDRESS"}}]
-
-TEXT:
 {text}
 
 JSON output:"""
@@ -79,22 +58,28 @@ async def detect_entities(text: str) -> list[dict]:
         "prompt": USER_PROMPT_TEMPLATE.format(text=text),
         "system": SYSTEM_PROMPT,
         "stream": False,
-        "options": {"temperature": 0},
+        "options": {"temperature": 0.2},
     }
 
     async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-        response = await client.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json=payload,
-        )
-        response.raise_for_status()
+        with xray_recorder.in_subsegment("ollama") as subsegment:
+            subsegment.put_annotation("model", OLLAMA_MODEL)
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json=payload,
+            )
+            response.raise_for_status()
 
     data = response.json()
     raw_output = data.get("response", "")
     entities = _extract_json_array(raw_output)
 
     # Validate and normalise: keep only entries with non-empty value and known/unknown type
-    valid_types = {"NAME", "EMAIL", "ADDRESS", "COMPANY", "PHONE", "URL", "SSN", "WBS_CODE", "OTHER_PII"}
+    valid_types = {
+        "NAME", "EMAIL", "ADDRESS", "COMPANY", "PHONE", "URL", "SSN", "USERNAME",
+        "DOB", "FINANCE", "IP_ADDRESS", "COORDINATES", "WBS_CODE",
+        "PASSPORT", "NUMBER_PLATE", "CVV", "NATIONAL_ID", "OTHER_PII",
+    }
     cleaned = []
     seen_values = set()
     for item in entities:
@@ -129,30 +114,41 @@ def apply_replacements(text: str, replacements: dict[str, str]) -> str:
 
 def restore_replacements(text: str, replacements: dict[str, str]) -> tuple[str, list[dict]]:
     """
-    Replace placeholders with original values.
+    Replace placeholders with original values in a single pass.
     replacements: { "[NAME_1]": "Jane Doe", ... }
     Returns (restored_text, highlighted_ranges) where each range is
-    {"start": int, "end": int, "placeholder": str, "original": str}.
-    Sorted longest-placeholder-first to avoid partial collisions.
+    {"start": int, "end": int, "fake": str, "original": str}.
+
+    Single-pass via re.finditer — positions are accumulated against the final
+    output string only, so range offsets are always correct.
     """
+    if not replacements:
+        return text, []
+
     pairs = sorted(replacements.items(), key=lambda x: len(x[0]), reverse=True)
+    pattern = re.compile('|'.join(re.escape(ph) for ph, _ in pairs))
+
+    result: list[str] = []
     ranges: list[dict] = []
+    out_pos = 0
+    prev_end = 0
 
-    for placeholder, original in pairs:
-        start = 0
-        while True:
-            idx = text.find(placeholder, start)
-            if idx == -1:
-                break
-            text = text[:idx] + original + text[idx + len(placeholder):]
-            ranges.append({
-                "start": idx,
-                "end": idx + len(original),
-                "placeholder": placeholder,
-                "original": original,
-            })
-            start = idx + len(original)
+    for m in pattern.finditer(text):
+        segment = text[prev_end:m.start()]
+        result.append(segment)
+        out_pos += len(segment)
 
-    # Sort ranges by start position for the frontend
-    ranges.sort(key=lambda r: r["start"])
-    return text, ranges
+        placeholder = m.group(0)
+        original = replacements[placeholder]
+        result.append(original)
+        ranges.append({
+            "start": out_pos,
+            "end": out_pos + len(original),
+            "fake": placeholder,
+            "original": original,
+        })
+        out_pos += len(original)
+        prev_end = m.end()
+
+    result.append(text[prev_end:])
+    return ''.join(result), ranges

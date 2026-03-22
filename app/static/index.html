@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PII Anonymiser</title>
+  <title>Chat Anonymiser</title>
   <link rel="stylesheet" href="/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/kitsune.svg" />
   <style>
     /* ── Tokens ────────────────────────────────────────────── */
     :root {
@@ -16,6 +17,9 @@
       --green-bg:  #D4EDDA;
       --green-fg:  #155724;
       --green-border: #A8D5B5;
+      --teal-bg:   #D1ECF1;
+      --teal-fg:   #0C5460;
+      --teal-border: #87CEDB;
       --neutral:   #F8F9FA;
       --border:    #DEE2E6;
       --text:      #212529;
@@ -41,19 +45,48 @@
       background: var(--white);
       border-bottom: 3px solid var(--red);
       padding: 0 3.2rem;
-      height: 6rem;
+      height: 8rem;
       display: flex;
       align-items: center;
       gap: 1.2rem;
     }
     .app-header__logo {
+      width: 6.4rem;
+      height: 6.4rem;
+    }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    .app-footer {
+      background: var(--white);
+      border-top: 3px solid var(--red);
+      padding: 3.2rem;
+    }
+    .app-footer__inner {
+      max-width: 120rem;
+      margin: 0 auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 2.4rem;
+    }
+    .app-footer__logo {
       width: 3.2rem;
       height: 3.2rem;
-      background: var(--red);
-      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: .4rem;
+    }
+    .app-footer__text { flex: 1; }
+    .app-footer__name {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: .6rem;
+    }
+    .app-footer__desc {
+      font-size: 1.3rem;
+      color: var(--muted);
+      line-height: 1.7;
     }
     .app-header__title {
-      font-size: 1.8rem;
+      font-size: 2.0rem;
       font-weight: 700;
       letter-spacing: -.02em;
     }
@@ -121,6 +154,7 @@
     /* ── Textarea ───────────────────────────────────────────── */
     .textarea {
       width: 100%;
+      box-sizing: border-box;
       min-height: 22rem;
       padding: 1.4rem 1.6rem;
       border: 1px solid var(--border);
@@ -144,6 +178,31 @@
       letter-spacing: .08em;
       color: var(--muted);
       margin-bottom: .6rem;
+      display: flex;
+      align-items: center;
+      min-height: 3.2rem;
+    }
+
+    /* Original text panel */
+    .original-panel {
+      min-height: 22rem;
+      padding: 1.4rem 1.6rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--neutral);
+      font-size: 1.5rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: hidden;
+    }
+    .original-panel mark.original {
+      background: #E2E3E5;
+      color: #383D41;
+      border: 1px solid #D6D8DB;
+      border-radius: 3px;
+      padding: 0 .3rem;
+      font-weight: 700;
     }
 
     /* Anonymised text panel — rich render */
@@ -169,6 +228,30 @@
       padding: 0 .3rem;
       font-weight: 700;
     }
+    .anon-panel mark.custom {
+      background: var(--teal-bg);
+      color: var(--teal-fg);
+      border: 1px solid var(--teal-border);
+      border-radius: 3px;
+      padding: 0 .3rem;
+      font-weight: 700;
+    }
+    .anon-panel mark.pii,
+    .anon-panel mark.custom { position: relative; }
+    .anon-panel mark .remove-x {
+      display: none;
+      position: absolute;
+      top: -.8rem;
+      right: -.7rem;
+      left: auto;
+      width: 1.5rem;
+      height: 1.5rem;
+      cursor: pointer;
+      opacity: .75;
+      z-index: 10;
+    }
+    .anon-panel mark:hover .remove-x { display: block; }
+    .anon-panel mark .remove-x:hover { opacity: 1; }
 
     /* ── Entity table ───────────────────────────────────────── */
     .entity-table {
@@ -201,6 +284,11 @@
       color: var(--amber-fg);
       border: 1px solid var(--amber-border);
     }
+    .badge-custom {
+      background: var(--teal-bg);
+      color: var(--teal-fg);
+      border-color: var(--teal-border);
+    }
 
     /* ── Response ───────────────────────────────────────────── */
     .response-body {
@@ -209,17 +297,29 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
-    .response-body mark.restored {
-      background: var(--green-bg);
-      color: var(--green-fg);
-      border: 1px solid var(--green-border);
+    .response-body mark.pii,
+    .response-body mark.custom {
       border-radius: 3px;
       padding: 0 .3rem;
+      border-width: 1px;
+      border-style: solid;
+      font-weight: 700;
       position: relative;
       cursor: default;
     }
-    .response-body mark.restored:hover::after {
-      content: attr(data-placeholder);
+    .response-body mark.pii {
+      background: var(--amber-bg);
+      color: var(--amber-fg);
+      border-color: var(--amber-border);
+    }
+    .response-body mark.custom {
+      background: var(--teal-bg);
+      color: var(--teal-fg);
+      border-color: var(--teal-border);
+    }
+    .response-body mark.pii:hover::after,
+    .response-body mark.custom:hover::after {
+      content: "Sent as: " attr(data-fake);
       position: absolute;
       bottom: calc(100% + 6px);
       left: 50%;
@@ -325,8 +425,8 @@
 
 <!-- ── Header ──────────────────────────────────────────────────────── -->
 <header class="app-header">
-  <div class="app-header__logo"></div>
-  <span class="app-header__title">PII Anonymiser</span>
+  <img src="/static/kitsune.svg" class="app-header__logo" alt="Chat Anonymiser logo" />
+  <span class="app-header__title">Chat Anonymiser</span>
   <span class="app-header__step" id="step-indicator"></span>
 </header>
 
@@ -344,8 +444,8 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal__title" id="modal-title">Add anonymisation</div>
     <div id="modal-selected-text" style="font-size:1.3rem;color:var(--muted);margin-bottom:1.6rem;"></div>
-    <label class="modal__label" for="modal-placeholder-input">Replacement placeholder (free-form)</label>
-    <input class="modal__input" id="modal-placeholder-input" type="text" placeholder="e.g. [CUSTOMER_NAME]" />
+    <label class="modal__label" for="modal-placeholder-input">Replace with</label>
+    <input class="modal__input" id="modal-placeholder-input" type="text" placeholder="e.g. John Smith" />
     <div class="modal__actions">
       <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
       <button class="btn btn-primary" id="modal-confirm">Confirm</button>
@@ -359,6 +459,10 @@
   <!-- VIEW 1: Input -->
   <div id="view-input">
     <div class="section-title">Enter your prompt</div>
+    <div id="prev-response-card" class="card hidden">
+      <div class="card__title">Previous response</div>
+      <div id="prev-response-display" class="response-body"></div>
+    </div>
     <div class="card">
       <div class="card__title">Raw prompt</div>
       <div id="input-error" class="alert alert-error hidden"></div>
@@ -387,10 +491,10 @@
       <div class="split">
         <div>
           <div class="split__label">Original</div>
-          <textarea id="original-display" class="textarea textarea--readonly" readonly></textarea>
+          <div id="original-display" class="original-panel"></div>
         </div>
         <div>
-          <div class="split__label">Anonymised &nbsp;<span style="font-size:1.2rem;color:var(--muted);font-weight:400;">(select text to add anonymisation)</span></div>
+          <div class="split__label" style="display:flex;align-items:center;gap:.8rem;">Anonymised &nbsp;<span style="font-size:1.2rem;color:var(--muted);font-weight:400;">(select text to add anonymisation)</span><button class="btn btn-ghost" id="btn-copy-anon" style="margin-left:auto;">Copy</button></div>
           <div id="anon-panel" class="anon-panel"></div>
         </div>
       </div>
@@ -401,8 +505,9 @@
       <table class="entity-table" id="entity-table">
         <thead>
           <tr>
-            <th>Placeholder</th>
+            <th>Anonymised as</th>
             <th>Original value</th>
+            <th>Entity type</th>
             <th style="width:6rem;"></th>
           </tr>
         </thead>
@@ -421,7 +526,7 @@
     <div class="section-title">Response</div>
 
     <div class="card">
-      <div class="card__title">De-anonymised response</div>
+      <div class="card__title" style="display:flex;align-items:center;">De-anonymised response<button class="btn btn-ghost" id="btn-copy-response" style="margin-left:auto;">Copy</button></div>
       <div id="response-error" class="alert alert-error hidden"></div>
       <div id="response-body" class="response-body"></div>
     </div>
@@ -431,8 +536,9 @@
       <table class="entity-table" id="response-entity-table">
         <thead>
           <tr>
-            <th>Placeholder</th>
+            <th>Anonymised as</th>
             <th>Original value</th>
+            <th>Entity type</th>
           </tr>
         </thead>
         <tbody id="response-entity-tbody"></tbody>
@@ -441,10 +547,38 @@
 
     <div class="actions">
       <button class="btn btn-primary" id="btn-start-over">Start over</button>
+      <button class="btn btn-outline" id="btn-continue-chat">Continue chat →</button>
     </div>
   </div>
 
 </main>
+
+<!-- ── Footer ──────────────────────────────────────────────────────── -->
+<footer class="app-footer">
+  <div class="app-footer__inner">
+    <img src="/static/kitsune.svg" class="app-footer__logo" alt="" />
+    <div class="app-footer__text">
+      <div class="app-footer__name">Chat Anonymiser</div>
+      <div class="app-footer__desc">
+        Designed to let you use external AI models without exposing sensitive information.
+        Before your prompt leaves your trusted environment, a local model detects personal data — names,
+        emails, phone numbers, addresses, and more — and replaces each with a labelled
+        placeholder that is contextually understandable, so the external model can still
+        reason about your request naturally. You decide what gets anonymised: review every
+        detected item, remove anything you're comfortable sharing, and add your own. Only
+        you choose what leaves your environment. When the response arrives, every placeholder
+        is swapped back so you read the answer with your real data restored.
+      </div>
+      <div style="margin-top:1.4rem;font-size:1.3rem;color:var(--muted);line-height:1.9;">
+        <span style="font-weight:700;color:var(--text);">Tips for best results</span><br>
+        › When asking the model to rewrite or summarise text, wrap it in quotation marks — this helps the model understand what to act on versus your instructions.<br>
+        › When adding a custom anonymisation, use a descriptive label (e.g. <em>this person's SSN</em>, <em>client company name</em>) so the model can reason about it in context.<br>
+        › Glance at the anonymised text before sending — the local model may occasionally miss uncommon formats. Use <em>Add anonymisation</em> for anything that slipped through.<br>
+        › Remove false positives freely — if something was flagged that isn't actually sensitive, hit Remove. Unnecessary placeholders can make the model's response less natural.
+      </div>
+    </div>
+  </div>
+</footer>
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
@@ -452,8 +586,9 @@ const state = {
   sessionId: null,
   rawText: '',
   anonymisedText: '',
-  entities: [],           // [{placeholder, original}]
+  entities: [],           // [{fake, original}]
   pendingSelection: null, // {text, start, end} of current mouse selection
+  lastResponse: '',       // de-anonymised text from most recent /api/complete
 };
 
 // ── DOM helpers ────────────────────────────────────────────────────────────
@@ -503,30 +638,59 @@ async function api(path, body) {
 function renderAnonPanel(text) {
   if (!text) { $('anon-panel').innerHTML = ''; return; }
 
-  const placeholders = state.entities.map(e => e.placeholder);
-  if (!placeholders.length) {
+  const fakes = state.entities.map(e => e.fake);
+  if (!fakes.length) {
     $('anon-panel').textContent = text;
   } else {
     // Sort longest first to avoid partial matches
-    const sorted = [...placeholders].sort((a, b) => b.length - a.length);
+    const sorted = [...fakes].sort((a, b) => b.length - a.length);
     const escaped = sorted.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const re = new RegExp(`(${escaped.join('|')})`, 'g');
 
     const parts = text.split(re);
     const html = parts.map(part => {
-      if (placeholders.includes(part)) {
-        return `<mark class="pii">${escHtml(part)}</mark>`;
+      if (fakes.includes(part)) {
+        const entity = state.entities.find(e => e.fake === part);
+        const cls = entity?.type === 'CUSTOM' ? 'custom' : 'pii';
+        return `<mark class="${cls}" data-ph="${escHtml(part)}"><img class="remove-x" src="/static/remove-icon.svg" alt="remove" title="Remove">${escHtml(part)}</mark>`;
       }
       return escHtml(part);
     }).join('');
 
     $('anon-panel').innerHTML = html;
+
+    // Attach remove listeners
+    $('anon-panel').querySelectorAll('mark[data-ph]').forEach(mark => {
+      mark.querySelector('.remove-x').addEventListener('mousedown', e => e.preventDefault());
+      mark.querySelector('.remove-x').addEventListener('click', e => {
+        e.stopPropagation();
+        removeEntity(mark.dataset.ph);
+      });
+    });
+  }
+}
+
+function renderOriginalPanel(text) {
+  if (!text) { $('original-display').innerHTML = ''; return; }
+
+  const originals = state.entities.map(e => e.original).filter(Boolean);
+  if (!originals.length) {
+    $('original-display').textContent = text;
+    return;
   }
 
-  // Match original textarea height to the rendered anon panel
-  requestAnimationFrame(() => {
-    $('original-display').style.height = $('anon-panel').offsetHeight + 'px';
-  });
+  const sorted = [...originals].sort((a, b) => b.length - a.length);
+  const escaped = sorted.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp(`(${escaped.join('|')})`, 'g');
+
+  const parts = text.split(re);
+  const html = parts.map(part =>
+    originals.includes(part)
+      ? `<mark class="original">${escHtml(part)}</mark>`
+      : escHtml(part)
+  ).join('');
+
+  $('original-display').innerHTML = html;
 }
 
 function escHtml(s) {
@@ -539,18 +703,20 @@ function renderEntityTable() {
   tbody.innerHTML = '';
 
   if (!state.entities.length) {
-    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);padding:1.2rem;">No entities.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);padding:1.2rem;">No entities.</td></tr>';
     return;
   }
 
-  state.entities.forEach(({ placeholder, original }) => {
+  state.entities.forEach(({ fake, original, type }) => {
     const tr = document.createElement('tr');
+    const badgeCls = type === 'CUSTOM' ? 'badge badge-custom' : 'badge';
     tr.innerHTML = `
-      <td><span class="badge">${escHtml(placeholder)}</span></td>
+      <td><span class="${badgeCls}">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
-      <td><button class="btn btn-ghost" data-ph="${escHtml(placeholder)}">Remove</button></td>
+      <td>${escHtml(type || '')}</td>
+      <td><button class="btn btn-ghost" data-ph="${escHtml(fake)}">Remove</button></td>
     `;
-    tr.querySelector('button').addEventListener('click', () => removeEntity(placeholder));
+    tr.querySelector('button').addEventListener('click', () => removeEntity(fake));
     tbody.appendChild(tr);
   });
 }
@@ -564,9 +730,11 @@ function renderResponse(text, ranges) {
 
   let html = '';
   let cursor = 0;
-  ranges.forEach(({ start, end, placeholder, original }) => {
+  ranges.forEach(({ start, end, fake, original }) => {
     html += escHtml(text.slice(cursor, start));
-    html += `<mark class="restored" data-placeholder="${escHtml(placeholder)}">${escHtml(original)}</mark>`;
+    const entity = state.entities.find(e => e.fake === fake);
+    const cls = entity?.type === 'CUSTOM' ? 'custom' : 'pii';
+    html += `<mark class="${cls}" data-fake="${escHtml(fake)}">${escHtml(original)}</mark>`;
     cursor = end;
   });
   html += escHtml(text.slice(cursor));
@@ -577,14 +745,16 @@ function renderResponseEntityTable(entities) {
   const tbody = $('response-entity-tbody');
   tbody.innerHTML = '';
   if (!entities.length) {
-    tbody.innerHTML = '<tr><td colspan="2" style="color:var(--muted);">No entities.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);">No entities.</td></tr>';
     return;
   }
-  entities.forEach(({ placeholder, original }) => {
+  entities.forEach(({ fake, original, type }) => {
     const tr = document.createElement('tr');
+    const badgeCls = type === 'CUSTOM' ? 'badge badge-custom' : 'badge';
     tr.innerHTML = `
-      <td><span class="badge">${escHtml(placeholder)}</span></td>
+      <td><span class="${badgeCls}">${escHtml(fake)}</span></td>
       <td>${escHtml(original)}</td>
+      <td>${escHtml(type || '')}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -598,15 +768,17 @@ $('btn-anonymise').addEventListener('click', async () => {
 
   showSpinner('Analysing for PII…');
   try {
-    const session = await api('/api/session', {});
-    state.sessionId = session.session_id;
+    if (!state.sessionId) {
+      const session = await api('/api/session', {});
+      state.sessionId = session.session_id;
+    }
     state.rawText = text;
 
     const result = await api('/api/anonymise', { session_id: state.sessionId, text });
     state.anonymisedText = result.anonymised_text;
     state.entities = result.entities;
 
-    $('original-display').value = state.rawText;
+    renderOriginalPanel(state.rawText);
     renderAnonPanel(state.anonymisedText);
     renderEntityTable();
 
@@ -623,18 +795,19 @@ $('btn-anonymise').addEventListener('click', async () => {
 });
 
 // ── Step 2: Remove entity ──────────────────────────────────────────────────
-async function removeEntity(placeholder) {
+async function removeEntity(fake) {
   clearError('review-error');
   showSpinner('Updating…');
   try {
     const result = await api('/api/anonymise/update', {
       session_id: state.sessionId,
       action: 'remove',
-      placeholder,
+      fake,
       text: state.anonymisedText,
     });
     state.anonymisedText = result.anonymised_text;
     state.entities = result.entities;
+    renderOriginalPanel(state.rawText);
     renderAnonPanel(state.anonymisedText);
     renderEntityTable();
 
@@ -696,7 +869,7 @@ selectionBtn.addEventListener('click', () => {
 // ── Modal ──────────────────────────────────────────────────────────────────
 function openModal(selectedText) {
   $('modal-selected-text').textContent = `Selected: "${selectedText}"`;
-  $('modal-placeholder-input').value = '[CUSTOM]';
+  $('modal-placeholder-input').value = '';
   $('modal-backdrop').classList.remove('hidden');
   $('modal-placeholder-input').select();
   $('modal-placeholder-input').focus();
@@ -723,10 +896,10 @@ $('modal-placeholder-input').addEventListener('keydown', (e) => {
 });
 
 async function confirmAddAnon() {
-  const placeholder = $('modal-placeholder-input').value.trim();
+  const fake = $('modal-placeholder-input').value.trim();
   const original = $('modal-backdrop').dataset.selected;
 
-  if (!placeholder) {
+  if (!fake) {
     $('modal-placeholder-input').focus();
     return;
   }
@@ -741,11 +914,12 @@ async function confirmAddAnon() {
       session_id: state.sessionId,
       action: 'add',
       original,
-      placeholder,
+      fake,
       text: state.anonymisedText,
     });
     state.anonymisedText = result.anonymised_text;
     state.entities = result.entities;
+    renderOriginalPanel(state.rawText);
     renderAnonPanel(state.anonymisedText);
     renderEntityTable();
 
@@ -768,6 +942,8 @@ $('btn-complete').addEventListener('click', async () => {
       session_id: state.sessionId,
       anonymised_text: state.anonymisedText,
     });
+    state.entities = result.entities;
+    state.lastResponse = result.response_text;
     renderResponse(result.response_text, result.highlighted_ranges);
     renderResponseEntityTable(result.entities);
     showView('response');
@@ -778,11 +954,40 @@ $('btn-complete').addEventListener('click', async () => {
   }
 });
 
+// ── Copy buttons ───────────────────────────────────────────────────────────
+function flashCopy(btn) {
+  btn.textContent = 'Copied!';
+  btn.disabled = true;
+  setTimeout(() => { btn.textContent = 'Copy'; btn.disabled = false; }, 1500);
+}
+
+$('btn-copy-anon').addEventListener('click', () => {
+  navigator.clipboard.writeText(state.anonymisedText);
+  flashCopy($('btn-copy-anon'));
+});
+
+$('btn-copy-response').addEventListener('click', () => {
+  navigator.clipboard.writeText($('response-body').textContent);
+  flashCopy($('btn-copy-response'));
+});
+
 // ── Navigation ─────────────────────────────────────────────────────────────
 $('btn-back-input').addEventListener('click', () => showView('input'));
 
+$('btn-continue-chat').addEventListener('click', () => {
+  Object.assign(state, { rawText: '', anonymisedText: '', entities: [], pendingSelection: null });
+  $('raw-input').value = '';
+  clearError('input-error');
+  clearError('review-error');
+  clearError('response-error');
+  $('prev-response-display').textContent = state.lastResponse;
+  $('prev-response-card').classList.remove('hidden');
+  showView('input');
+});
+
 $('btn-start-over').addEventListener('click', () => {
-  Object.assign(state, { sessionId: null, rawText: '', anonymisedText: '', entities: [], pendingSelection: null });
+  Object.assign(state, { sessionId: null, rawText: '', anonymisedText: '', entities: [], pendingSelection: null, lastResponse: '' });
+  $('prev-response-card').classList.add('hidden');
   $('raw-input').value = '';
   clearError('input-error');
   clearError('review-error');

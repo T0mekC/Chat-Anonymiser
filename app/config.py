@@ -8,9 +8,23 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
 if not ANTHROPIC_API_KEY:
+    # Fallback: read from AWS SSM Parameter Store (used on EC2)
+    try:
+        import boto3
+        ssm = boto3.client("ssm", region_name=os.getenv("AWS_REGION", "eu-west-1"))
+        response = ssm.get_parameter(
+            Name="/chat-anonymiser/anthropic-api-key",
+            WithDecryption=True,
+        )
+        ANTHROPIC_API_KEY = response["Parameter"]["Value"]
+    except Exception:
+        pass
+
+if not ANTHROPIC_API_KEY:
     raise RuntimeError(
         "ANTHROPIC_API_KEY is not set. "
-        "Add it to the .env file in the project root: ANTHROPIC_API_KEY=sk-ant-..."
+        "Add it to .env (local) or SSM Parameter Store at "
+        "/chat-anonymiser/anthropic-api-key (EC2)."
     )
 
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")

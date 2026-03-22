@@ -1,28 +1,59 @@
-# CLAUDE.md — PII Anonymiser
+# CLAUDE.md
 
-Local POC single-page web application. Anonymises user prompts via a local LLM (phi3:mini)
-before sending them to Claude Haiku, then de-anonymises the response programmatically.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+**Chat Anonymiser** — local POC single-page web application. Anonymises user prompts by replacing
+real PII with opaque indexed placeholders (e.g. `[NAME_1]`, `[EMAIL_1]`) before sending to Claude
+Haiku, then de-anonymises the response programmatically. Supports multi-turn conversation: the
+session and placeholder mapping persist across "Continue chat" cycles so Claude Haiku maintains
+context and the same original value always maps to the same placeholder.
+
+---
+
+## Commands
+
+```bash
+# Start the app (handles venv, deps, and Ollama check)
+chmod +x start.sh && ./start.sh
+
+# Or start manually from the app/ directory
+source ../.venv/bin/activate
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+
+# Install / update dependencies
+pip install -r app/requirements.txt
+
+# Check Ollama is running and the model is available
+curl http://localhost:11434/api/tags
+ollama list   # should show phi3:3.8b
+
+# Pull the model if missing
+ollama pull phi3:3.8b
+```
+
+There are no tests in this project.
+
+Open: `http://localhost:8000`
 
 ---
 
 ## Project overview
 
 ```
-User input ──► phi3:mini (Ollama, local) ──► entity detection
+User input ──► phi3:3.8b (Ollama, local) ──► entity detection
                                                │
-                              backend replaces entities with placeholders
+                     backend replaces entities with opaque [TYPE_N] placeholders
                                                │
                               user reviews & edits anonymised text
                                                │
                                        Claude Haiku API
                                                │
-                              backend replaces placeholders with originals
+                              backend replaces fake values with originals
                                                │
                               highlighted de-anonymised response ──► user
 ```
 
-**PII entity types detected:** NAME · EMAIL · ADDRESS · COMPANY · PHONE · URL · SSN · WBS_CODE · OTHER_PII
-**Excluded from detection:** dates, times, timestamps, generic job titles, standalone country/city names
+**PII entity types detected:** NAME · EMAIL · PHONE · ADDRESS · COMPANY · URL · SSN · USERNAME · DOB · FINANCE · IP_ADDRESS · COORDINATES · WBS_CODE · PASSPORT · NUMBER_PLATE · CVV · NATIONAL_ID · OTHER_PII
 
 ---
 
@@ -30,13 +61,18 @@ User input ──► phi3:mini (Ollama, local) ──► entity detection
 
 | Layer | Technology | Notes |
 |-------|-----------|-------|
-| Anonymiser LLM | phi3:mini via Ollama | Runs locally on Apple Silicon |
+| Anonymiser LLM | phi3:3.8b via Ollama | Runs locally on Apple Silicon |
 | Backend API | Python 3.11 + FastAPI | Served on localhost:8000 |
 | Frontend | Vanilla HTML/CSS/JS SPA | Single `index.html`, no framework |
 | External LLM | Claude Haiku (`claude-haiku-4-5`) | Anthropic API |
 | API key storage | `.env` file (project root) | Never exposed externally |
 
 **Target hardware:** MacBook Air M2 (MW103ZE/A) — all components run locally.
+
+### Static file serving
+- `/static/*` — served from `app/static/` via FastAPI `StaticFiles` mount
+- `/style.css` — served via a **dedicated route** (`GET /style.css`) from the project root, not through the static mount
+- `/` — serves `app/static/index.html`
 
 ---
 
@@ -45,15 +81,16 @@ User input ──► phi3:mini (Ollama, local) ──► entity detection
 ```
 ├── app/
 │   ├── main.py             FastAPI app: serves static files + API routes
-│   ├── anonymiser.py       phi3:mini via Ollama — entity detection only
+│   ├── anonymiser.py       phi3:3.8b via Ollama — entity detection + text replacement
 │   ├── claude_client.py    Claude Haiku API call
 │   ├── session_store.py    In-memory session store (session_id → mapping)
-│   ├── config.py           Loads ANTHROPIC_API_KEY from .env
+│   ├── config.py           Loads env vars from .env; exports ANTHROPIC_API_KEY, OLLAMA_BASE_URL, OLLAMA_MODEL, CLAUDE_MODEL
 │   ├── requirements.txt
 │   └── static/
 │       └── index.html      Single-page UI (3-view JS state machine)
+├── style.css               Fujitsu destyle CSS reset (served at /style.css)
+├── examplewebpage.png      Fujitsu design reference
 ├── .env                    ANTHROPIC_API_KEY=sk-ant-...  ← git-ignored
-├── .gitignore
 ├── start.sh                Launch script
 └── CLAUDE.md               This file
 ```
@@ -65,73 +102,88 @@ User input ──► phi3:mini (Ollama, local) ──► entity detection
 | Method | Path | Request body | Response |
 |--------|------|-------------|---------|
 | `POST` | `/api/session` | `{}` | `{ session_id }` |
-| `POST` | `/api/anonymise` | `{ session_id, text }` | `{ anonymised_text, entities: [{placeholder, original, type}] }` |
-| `POST` | `/api/anonymise/update` | `{ session_id, action, placeholder?, original?, text? }` | `{ anonymised_text, entities }` |
-| `POST` | `/api/complete` | `{ session_id, anonymised_text }` | `{ response_text, entities, highlighted_ranges }` |
+| `POST` | `/api/anonymise` | `{ session_id, text }` | `{ anonymised_text, entities: [{fake, original, type}] }` |
+| `POST` | `/api/anonymise/update` | `{ session_id, action, fake?, original?, text }` | `{ anonymised_text, entities: [{fake, original, type}] }` |
+| `POST` | `/api/complete` | `{ session_id, anonymised_text }` | `{ response_text, entities, highlighted_ranges: [{start, end, fake, original}] }` |
 
 ### Session & mapping
 - Sessions are **in-memory only** — lost on server restart or browser refresh (acceptable for POC).
 - Session TTL: 2 hours.
-- Mapping format: `{ "[NAME_1]": "Jane Doe", "[EMAIL_1]": "jane@acme.com" }`
-- Placeholder format: `[TYPE_N]` where N increments per type per session (e.g. `[NAME_1]`, `[NAME_2]`).
+- Session structure: `{ "mapping": {}, "types": {}, "fakes": set(), "counters": {}, "conversation_history": [], "created_at": float }`
+- Mapping format: `{ "[NAME_1]": "Anna Kowalski", "[EMAIL_1]": "real@company.com" }` (placeholder → original)
+- Auto-generated placeholders: `[TYPE_N]` where TYPE is the entity type and N is a per-type counter within the session (e.g. `[NAME_1]`, `[EMAIL_2]`, `[ADDRESS_1]`). Generated by `session_store._next_placeholder`.
+- User-defined placeholders: user types a label (e.g. `bank phone`) → stored as `[bank phone]`. The `[]` brackets are added automatically by `add_custom_fake` if not already present. This keeps them structurally consistent with auto-generated tokens so Claude treats them as opaque.
 - Same original value always gets the same placeholder within a session.
-- Entities sorted longest-first before replacement to avoid partial-match collisions.
+- `conversation_history` accumulates `{"role": "user"|"assistant", "content": str}` entries. Updated by `append_to_history`; read by `get_history`. The full history is passed to Claude Haiku on every `/api/complete` call.
+- Replacements use single-pass `re.finditer` / `re.sub` (longest-placeholder-first alternation) — no cascading, no position drift.
 
 ### `/api/anonymise/update` actions
-- `add` — user manually highlights text and provides a free-form custom placeholder.
-  - Body: `{ session_id, action: "add", original: "highlighted text", placeholder: "[CUSTOM_LABEL]", text: "current anonymised text" }`
+- `add` — user manually highlights text and types their own label.
+  - Body: `{ session_id, action: "add", original: "highlighted text", fake: "bank phone", text: "current anonymised text" }`
+  - Backend wraps label in `[bank phone]` via `add_custom_fake`; that bracketed token replaces `original` in the text and appears in the mapping.
 - `remove` — user removes an entity from the mapping and restores original text.
-  - Body: `{ session_id, action: "remove", placeholder: "[NAME_1]", text: "current anonymised text" }`
+  - Body: `{ session_id, action: "remove", fake: "[NAME_1]", text: "current anonymised text" }`
+  - `fake` must be the exact placeholder string (including brackets).
 
 ### De-anonymisation
-Done **programmatically** by the backend (no LLM involved):
+Done **programmatically** by the backend (no LLM involved) using a single-pass regex scan:
 ```python
-for placeholder, original in mapping.items():
-    response_text = response_text.replace(placeholder, original)
+pattern = re.compile('|'.join(re.escape(ph) for ph, _ in pairs))  # longest-first
+for m in pattern.finditer(text):
+    original = replacements[m.group(0)]
+    ...
 ```
-The backend also returns character ranges of restored values for frontend highlighting.
+Output positions are accumulated as text is emitted — no intermediate mutations, so range offsets are always correct. The backend returns character ranges of restored values for frontend highlighting.
 
 ---
 
 ## phi3:3.8b integration (anonymiser.py)
 
-- Calls Ollama at `http://localhost:11434/api/generate`
-- Model: `phi3:3.8b` (pulled as `phi3:3.8b` — verify with `ollama list`)
-- Uses `format: "json"` to force structured output
-- Prompt returns a JSON array of detected entities:
+- Calls Ollama at `http://localhost:11434/api/generate` (overridable via `OLLAMA_BASE_URL` in `.env`)
+- Model: `phi3:3.8b` (verify with `ollama list`)
+- Uses `temperature: 0.2` and `stream: false`
+- System prompt (`SYSTEM_PROMPT`) tells the model to output only a JSON array with `"value"` and `"type"` fields and lists the valid categories.
+- User prompt (`USER_PROMPT_TEMPLATE`) is intentionally minimal: `"Find all potential sensitive information PII in this text:"` — a verbose bullet list was found to bias the model toward a narrow set of types.
+- Output is a JSON array of detected entities:
   ```json
   [{"value": "Anna Kowalski", "type": "NAME"}, {"value": "anna.k@gmail.com", "type": "EMAIL"}]
   ```
-- The backend (not the model) performs the actual text replacement.
-- If Ollama is unreachable, raise HTTP 503: "please ensure Ollama is running on your device. Run terminal command: ollama serve"
+- **Detection only** — the model identifies real values; `session_store` generates `[TYPE_N]` placeholder tokens; `anonymiser.apply_replacements` does the text substitution.
+- Types not in `valid_types` are remapped to `OTHER_PII` before returning.
+- If Ollama is unreachable, raises HTTP 503: "please ensure Ollama is running on your device. Run terminal command: ollama serve"
 - All `httpx.HTTPError` subclasses (connect error, timeout, HTTP status error) are caught and returned as 503.
 
 ### Entity types
 | Type | Detects |
 |------|---------|
-| NAME | Full names, first/last names, nicknames, usernames |
+| NAME | Full names, first/last names, nicknames |
 | EMAIL | Email addresses |
 | PHONE | Phone numbers in any format |
 | ADDRESS | Street addresses, postcodes, building+city combinations |
 | COMPANY | Company names, brand names, organisation names |
 | URL | Web addresses, domain names |
 | SSN | Social security / national ID numbers (PESEL, NIP, etc.) |
+| USERNAME | Usernames, login names, handles |
+| DOB | Dates of birth specifically (not generic dates or timestamps) |
+| FINANCE | IBANs, bank account numbers, credit card numbers |
+| IP_ADDRESS | IPv4/IPv6 addresses, MAC addresses |
+| COORDINATES | Geographic coordinates, latitude/longitude pairs |
 | WBS_CODE | Project / work-breakdown-structure codes |
+| PASSPORT | Passport numbers |
+| NUMBER_PLATE | Vehicle registration / licence plate numbers |
+| CVV | Card security codes |
+| NATIONAL_ID | National identity card numbers |
 | OTHER_PII | Any other sensitive identifier |
-
-### Explicitly excluded from detection
-- Dates, times, timestamps (e.g. "12 March 2025", "14:30", "Q1 2024")
-- Generic job titles without a name attached (e.g. "the manager", "CEO")
-- Standalone country or city names used generically (e.g. "London", "Poland")
 
 ---
 
 ## Claude Haiku integration (claude_client.py)
 
 - Model ID: `claude-haiku-4-5`
-- Uses `anthropic` Python SDK
-- System prompt: instruct the model to respond helpfully; placeholders like `[NAME_1]` in the
-  prompt are intentional anonymisation tokens — do not modify or expand them.
+- Uses `anthropic` Python SDK (`AsyncAnthropic`)
+- `complete(messages: list[dict])` accepts a full conversation history (all prior turns + the current user message). `/api/complete` in `main.py` builds this list from `session_store.get_history()` + the current anonymised text, then calls `append_to_history` twice (user + assistant) after receiving the response.
+- System prompt instructs Claude to preserve all `[...]` placeholder tokens verbatim — auto-generated (`[NAME_1]`, `[EMAIL_2]`) and user-labelled (`[bank phone]`, `[customer email]`). Claude is also told to keep a space on each side of every placeholder and never attach it directly to adjacent words or other placeholders. This is how de-anonymisation works; Claude is not aware these stand in for real values.
+- `max_tokens`: 2048
 - API key loaded from `.env` via `config.py` — never hardcoded, never logged.
 
 ---
@@ -141,12 +193,13 @@ The backend also returns character ranges of restored values for frontend highli
 Single file. Three views managed by a JS state machine (no page reload, no framework).
 
 ### Design reference
-- **Style base:** `style.css` in project root (Fujitsu destyle CSS reset — link it from index.html)
+- **Style base:** `style.css` in project root (Fujitsu destyle CSS reset — linked as `/style.css`)
 - **Reference image:** `examplewebpage.png` (Fujitsu corporate look: white background, red CTAs, clean typography)
 - **Font stack:** `FujitsuInfinityPro, Arial, sans-serif` (FujitsuInfinityPro will not load locally — Arial fallback is fine)
 - **Colour palette:**
   - Primary action (buttons): `#E4002B` (Fujitsu red)
-  - Anonymised placeholder highlights: `#FFF3CD` background, `#856404` text (amber)
+  - Auto-detected placeholder highlights: `#FFF3CD` background, `#856404` text (amber)
+  - User-defined (CUSTOM) placeholder highlights: `#D1ECF1` background, `#0C5460` text (teal)
   - De-anonymised value highlights: `#D4EDDA` background, `#155724` text (green)
   - Neutral background: `#F8F9FA`
   - Card background: `#FFFFFF` with subtle `box-shadow`
@@ -154,29 +207,34 @@ Single file. Three views managed by a JS state machine (no page reload, no frame
 > **IMPORTANT:** Before generating any frontend code, invoke the `frontend-design` skill.
 
 ### View 1 — Input
+- If returning via "Continue chat": a **"Previous response"** card appears above the raw prompt area showing the de-anonymised text from the last Claude exchange.
 - Full-width `<textarea>` placeholder: "Paste your prompt here…"
-- "Anonymise" button (primary, red) → POST `/api/session` then POST `/api/anonymise`
-- Loading spinner overlay while phi3:mini processes
+- "Anonymise" button (primary, red) → creates a new session via `POST /api/session` **only if no session exists** (reused when continuing chat), then `POST /api/anonymise`
+- Loading spinner overlay while phi3:3.8b processes
 
 ### View 2 — Review (side-by-side)
-- Left panel: original text (read-only, light grey background)
-- Right panel: anonymised text — placeholders rendered as amber `<mark>` chips, editable otherwise
+- Left panel (`#original-display`): rendered as a `<div>` (not a textarea) — never shows a scrollbar; original values that were anonymised are highlighted in grey (`#E2E3E5` bg).
+- Right panel: anonymised text — auto-detected placeholders as amber `<mark>` chips, user-defined (CUSTOM) as teal chips. Each chip has a **remove ×** icon (upper-right corner, `position: absolute`) that appears on hover and calls `removeEntity()`.
+- "Copy" button in the right panel label row (copies plain text of the anonymised panel)
 - If no entities detected: show a blue info banner "No PII detected. You may still add anonymisations manually."
 - Entity table below both panels:
-  | Placeholder | Original value | Remove |
+  | Anonymised as | Original value | Remove |
+  - Badge colour: amber for auto-detected, teal for CUSTOM
   - "Remove" button calls `/api/anonymise/update` with action `remove`
 - Text-selection interaction on the right panel:
   - On `mouseup`, if text is selected, show a floating "Add anonymisation" button near selection
-  - Clicking it opens a small modal: input field pre-filled with `[CUSTOM]`, user edits freely
-  - On confirm → POST `/api/anonymise/update` with action `add`
+  - Clicking it opens a modal: user types a short label (e.g. `bank phone`)
+  - On confirm → POST `/api/anonymise/update` with action `add`; backend stores `[bank phone]` as the placeholder
 - "Prompt external model →" button (primary) → View 3
 
 ### View 3 — Response
-- Response text rendered with de-anonymised values wrapped in green `<mark>` elements
-- Hovering a green mark shows a tooltip with the placeholder that was used (e.g. `[NAME_1]`)
+- Response text rendered with de-anonymised values wrapped in amber `<mark>` elements (auto-detected) or teal (CUSTOM)
+- "Copy" button in the response card title row (copies the de-anonymised plain text)
+- Hovering a mark shows a tooltip with the placeholder that was used (e.g. `[NAME_1]`)
 - PII summary table below:
-  | Placeholder | Original value |
-- "Start over" button → clears session state, returns to View 1
+  | Anonymised as | Original value |
+- **"Start over"** button → clears full state including `sessionId`, returns to View 1
+- **"Continue chat →"** button (outline) → keeps `sessionId` and conversation history, stores the current response in `state.lastResponse`, returns to View 1 where it appears in the "Previous response" card
 
 ---
 
@@ -185,50 +243,8 @@ Single file. Three views managed by a JS state machine (no page reload, no frame
 ### `.env` (git-ignored)
 ```
 ANTHROPIC_API_KEY=sk-ant-YOUR-KEY-HERE
+OLLAMA_BASE_URL=http://localhost:11434   # optional, this is the default
 ```
-
-### `config.py`
-```python
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-if not ANTHROPIC_API_KEY:
-    raise RuntimeError("ANTHROPIC_API_KEY not set in .env")
-```
-
----
-
-## Prerequisites (already on user's machine)
-- Python 3.11+
-- Ollama installed and running (`ollama serve`)
-- phi3:mini pulled (`ollama pull phi3:mini`)
-- `.env` file created with Anthropic API key
-
----
-
-## Start script (start.sh)
-
-```bash
-#!/usr/bin/env bash
-set -e
-
-# Ensure Ollama is running
-if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-  echo "Starting Ollama..."
-  ollama serve &
-  sleep 2
-fi
-
-cd app
-source ../.venv/bin/activate 2>/dev/null || python3 -m venv ../.venv && source ../.venv/bin/activate
-pip install -q -r requirements.txt
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-Run: `chmod +x start.sh && ./start.sh`
-Open: `http://localhost:8000`
 
 ---
 
@@ -236,11 +252,11 @@ Open: `http://localhost:8000`
 
 - **Single user** — in-memory store, not designed for concurrent sessions.
 - **In-memory only** — refreshing the browser loses the session and mapping.
-- **phi3:mini accuracy** — small model; always review the entity table before sending.
+- **phi3:3.8b accuracy** — small model; always review the entity table before sending.
 - **HTTP only** — runs on localhost, no TLS needed.
-- **Manual edits not back-tracked** — if you type a placeholder directly into the text area that
+- **Manual edits not back-tracked** — if you type a fake value directly into the text area that
   isn't in the session mapping, de-anonymisation will leave it unreplaced.
-- **Free-form custom placeholders** — must be unique; duplicates overwrite the mapping entry.
+- **Custom labels** — if the user types the same label twice, the second entry overwrites the first in the mapping.
 
 ---
 
@@ -248,5 +264,6 @@ Open: `http://localhost:8000`
 
 - Do **not** log or persist PII anywhere (no files, no database, no stdout logging of entity values).
 - Do **not** expose the Anthropic API key in any frontend code or API response.
-- Keep all LLM calls to phi3:mini **local only** (Ollama on localhost).
+- Keep all LLM calls to phi3:3.8b **local only** (Ollama on localhost).
 - Session IDs should be random UUIDs (use `uuid.uuid4()`).
+- Always use `get_or_create_fake` for auto-generated placeholders and `add_custom_fake` for user-defined ones (never write directly to `session["mapping"]`).
