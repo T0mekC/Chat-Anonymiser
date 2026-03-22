@@ -5,7 +5,7 @@
 set -euo pipefail
 
 APP_DIR=/home/ec2-user/anonymiser
-REPO_URL=<your-repo-url>   # ← replace before running
+REPO_URL=https://github.com/T0mekC/Chat-Anonymiser.git   # ← replace before running
 
 # ── System packages ──────────────────────────────────────────────────────────
 sudo dnf update -y
@@ -43,8 +43,12 @@ sudo nginx -t
 sudo systemctl enable --now nginx
 
 # ── X-Ray daemon ─────────────────────────────────────────────────────────────
-sudo dnf install -y aws-xray-daemon
-sudo systemctl enable --now aws-xray-daemon
+# Not in AL2023 repos — install via RPM from AWS
+sudo dnf install -y unzip
+curl -sSL https://s3.amazonaws.com/aws-xray-assets.us-east-1/xray-daemon/aws-xray-daemon-3.x.rpm \
+  -o /tmp/aws-xray-daemon.rpm
+sudo rpm -U /tmp/aws-xray-daemon.rpm
+sudo systemctl enable --now xray
 
 # ── Done ─────────────────────────────────────────────────────────────────────
 # Fetch public IP via IMDSv2 (HttpTokens=required)

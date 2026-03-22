@@ -141,22 +141,16 @@ Wait about 2 minutes after launch for the instance to reach *running* state and 
    sudo su - ec2-user
    ```
 
-3. Edit the setup script to add your repository URL, then run it:
+3. Clone the repo and run the setup script:
 
    ```bash
-   # Clone the repo first so you can edit the script
-   git clone <your-repo-url> /home/ec2-user/anonymiser
-
-   # Open the script and replace <your-repo-url> with your actual URL
-   nano /home/ec2-user/anonymiser/deploy/setup_ec2.sh
-   # Change the REPO_URL line, then save with Ctrl+O, exit with Ctrl+X
-
-   # Run the setup
+   sudo dnf install -y git
+   git clone https://github.com/T0mekC/Chat-Anonymiser.git /home/ec2-user/anonymiser
    bash /home/ec2-user/anonymiser/deploy/setup_ec2.sh
    ```
 
    The script will:
-   - Install nginx, Python 3.11, and git
+   - Update packages and install nginx, Python 3.11, and git
    - Install Ollama and pull the phi3:3.8b model (~2 GB download — takes a few minutes)
    - Create a Python virtual environment and install app dependencies
    - Install and start the `anonymiser` systemd service (uvicorn)

@@ -11,7 +11,7 @@ if not ANTHROPIC_API_KEY:
     # Fallback: read from AWS SSM Parameter Store (used on EC2)
     try:
         import boto3
-        ssm = boto3.client("ssm", region_name=os.getenv("AWS_REGION", "eu-west-1"))
+        ssm = boto3.client("ssm")
         response = ssm.get_parameter(
             Name="/chat-anonymiser/anthropic-api-key",
             WithDecryption=True,
